@@ -36,6 +36,7 @@ export async function POST(_request: Request, ctx: RouteContext<"/api/insurance/
 
   await sendInsuranceConfirmationEmail(booking.client_email, {
     policyRef: booking.ref,
+    policyNumber: booking.policy_number || undefined,
     planName: booking.plan_name,
     supplier: booking.policy_provider,
     coverage: 0,

@@ -311,6 +311,70 @@ const COUNTRIES = [
 
 const INS_TYPES = ['Individual','Family Floater','Annual Multitrip'];
 
+/* Compact label+select cell used in the insurance search bar (Insurance Type / Default From
+ * Country / Travelling Country). Native selects styled with appearance:none previously had no
+ * visible caret at all on the control itself (the small ▼ sat next to the label instead) and no
+ * focus indicator — this pairs a real caret with the value and gives keyboard/mouse focus a
+ * visible cue instead of `outline:none` with nothing in its place. Also carries an icon, a
+ * required "*" marker, a placeholder "Select…" state (value stays '' until chosen), and an
+ * error state so unpicked required fields are caught before submit rather than silently
+ * defaulting to whatever option happened to be first. */
+function LabeledSelect({ label, value, onChange, options, flex, borderRight, required, error, placeholder }: {
+  label: string; value: string; onChange: (v: string) => void; options: string[];
+  flex: number; borderRight?: boolean; required?: boolean; error?: boolean; placeholder?: string;
+}) {
+  const [focused, setFocused] = useState(false);
+  const [hovered, setHovered] = useState(false);
+  const active = focused || hovered;
+  const isEmpty = !value;
+  const accent = error ? '#c0392b' : O;
+  return (
+    <div
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        flex, padding: '11px 16px',
+        borderRight: borderRight ? '1.5px solid #e8e2db' : undefined,
+        background: error ? '#fdf3f2' : active ? '#fff8f2' : '#fff',
+        transition: 'background .15s',
+      }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 5 }}>
+        <span style={{ fontSize: 9.5, fontWeight: 700, color: error ? '#c0392b' : '#b0a89e',
+          letterSpacing: '.09em', textTransform: 'uppercase' }}>{label}</span>
+        {required && <span style={{ color: accent, fontSize: 11, fontWeight: 800, lineHeight: 1 }}>*</span>}
+      </div>
+      <div style={{ position: 'relative' }}>
+        <select
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          style={{
+            fontSize: 15, fontWeight: 800, color: isEmpty ? '#c5bdb5' : '#1a1a2e', border: 'none',
+            outline: active ? `1.5px solid ${accent}` : 'none', outlineOffset: 2, borderRadius: 4,
+            background: 'transparent', fontFamily: 'inherit', appearance: 'none',
+            cursor: 'pointer', width: '100%', paddingRight: 18,
+          }}>
+          {placeholder && <option value="" disabled hidden>{placeholder}</option>}
+          {options.map(o => <option key={o} value={o}>{o}</option>)}
+        </select>
+        <span style={{
+          position: 'absolute', right: 1, top: '50%',
+          transform: active ? 'translateY(-50%) rotate(180deg)' : 'translateY(-50%)',
+          fontSize: 9, color: active ? accent : '#c5bdb5', transition: 'transform .15s, color .15s',
+          pointerEvents: 'none',
+        }}>▼</span>
+      </div>
+      {error && (
+        <div style={{ marginTop: 4, background: '#c0392b', borderRadius: 5,
+          padding: '2px 8px', display: 'inline-block' }}>
+          <span style={{ fontSize: 8.5, fontWeight: 700, color: '#fff' }}>*Required</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function DashboardPage() {
   const router = useRouter();
   const { user, loading: userLoading } = useCurrentUser();
@@ -415,9 +479,9 @@ export default function DashboardPage() {
   }
 
   // Insurance state
-  const [insType,    setInsType]    = useState(INS_TYPES[0]);
-  const [insFrom,    setInsFrom]    = useState('India');
-  const [insDest,    setInsDest]    = useState('United Arab Emirates');
+  const [insType,    setInsType]    = useState('');
+  const [insFrom,    setInsFrom]    = useState('');
+  const [insDest,    setInsDest]    = useState('');
   const [insStart,   setInsStart]   = useState('');
   const [insEnd,     setInsEnd]     = useState('');
   const [insPersons, setInsPersons] = useState(1);
@@ -612,50 +676,34 @@ export default function DashboardPage() {
                 <div style={{ display:'flex', borderRadius:14, overflow:'hidden', marginBottom:10,
                   boxShadow:'0 2px 12px rgba(0,0,0,.07)', border:'1.5px solid #e8e2db' }}>
 
-                  {/* Insurance Type */}
-                  <div style={{ flex:1.3, padding:'10px 16px', borderRight:'1.5px solid #e8e2db', background:'#fff' }}>
-                    <div style={{ display:'flex', alignItems:'center', gap:4, marginBottom:4 }}>
-                      <span style={{ fontSize:9.5, fontWeight:700, color:'#b0a89e', letterSpacing:'.09em', textTransform:'uppercase' }}>Insurance Type</span>
-                      <span style={{ fontSize:8.5, color:'#c5bdb5' }}>▼</span>
-                    </div>
-                    <select value={insType}
-                      onChange={e => {
-                        const v = e.target.value;
-                        setInsType(v);
-                        if (v === 'Individual' || v === 'Annual Multitrip') setInsPersons(1);
-                        else if (v === 'Family Floater') setInsPersons(p => p < 2 ? 2 : p > 6 ? 6 : p);
-                      }}
-                      style={{ fontSize:15, fontWeight:800, color:'#1a1a2e', border:'none', outline:'none',
-                        background:'transparent', fontFamily:'inherit', appearance:'none', cursor:'pointer', width:'100%' }}>
-                      {INS_TYPES.map(t => <option key={t}>{t}</option>)}
-                    </select>
-                  </div>
+                  <LabeledSelect
+                    label="Insurance Type" flex={1.3} borderRight required
+                    placeholder="Select Insurance Type"
+                    error={showInsuranceErrors && !insType}
+                    value={insType}
+                    onChange={v => {
+                      setInsType(v);
+                      if (v === 'Individual' || v === 'Annual Multitrip') setInsPersons(1);
+                      else if (v === 'Family Floater') setInsPersons(p => p < 2 ? 2 : p > 6 ? 6 : p);
+                    }}
+                    options={INS_TYPES}
+                  />
 
-                  {/* Default From Country */}
-                  <div style={{ flex:1, padding:'10px 16px', borderRight:'1.5px solid #e8e2db', background:'#fff' }}>
-                    <div style={{ display:'flex', alignItems:'center', gap:4, marginBottom:4 }}>
-                      <span style={{ fontSize:9.5, fontWeight:700, color:'#b0a89e', letterSpacing:'.09em', textTransform:'uppercase' }}>Default From Country</span>
-                      <span style={{ fontSize:8.5, color:'#c5bdb5' }}>▼</span>
-                    </div>
-                    <select value={insFrom} onChange={e => setInsFrom(e.target.value)}
-                      style={{ fontSize:15, fontWeight:800, color:'#1a1a2e', border:'none', outline:'none',
-                        background:'transparent', fontFamily:'inherit', appearance:'none', cursor:'pointer', width:'100%' }}>
-                      {COUNTRIES.map(c => <option key={c}>{c}</option>)}
-                    </select>
-                  </div>
+                  <LabeledSelect
+                    label="Default From Country" flex={1} borderRight required
+                    placeholder="Select Country"
+                    error={showInsuranceErrors && !insFrom}
+                    value={insFrom} onChange={setInsFrom}
+                    options={COUNTRIES}
+                  />
 
-                  {/* Travelling Country */}
-                  <div style={{ flex:1, padding:'10px 16px', background:'#fff' }}>
-                    <div style={{ display:'flex', alignItems:'center', gap:4, marginBottom:4 }}>
-                      <span style={{ fontSize:9.5, fontWeight:700, color:'#b0a89e', letterSpacing:'.09em', textTransform:'uppercase' }}>Travelling Country</span>
-                      <span style={{ fontSize:8.5, color:'#c5bdb5' }}>▼</span>
-                    </div>
-                    <select value={insDest} onChange={e => setInsDest(e.target.value)}
-                      style={{ fontSize:15, fontWeight:800, color:'#1a1a2e', border:'none', outline:'none',
-                        background:'transparent', fontFamily:'inherit', appearance:'none', cursor:'pointer', width:'100%' }}>
-                      {COUNTRIES.filter(c => c !== insFrom).map(c => <option key={c}>{c}</option>)}
-                    </select>
-                  </div>
+                  <LabeledSelect
+                    label="Travelling Country" flex={1} required
+                    placeholder="Select Country"
+                    error={showInsuranceErrors && !insDest}
+                    value={insDest} onChange={setInsDest}
+                    options={COUNTRIES.filter(c => c !== insFrom)}
+                  />
                 </div>
 
                 {/* Row 2 — compact strip: 4 cols */}
@@ -749,9 +797,9 @@ export default function DashboardPage() {
                 {/* Get Quotes button */}
                 <div style={{ display:'flex', justifyContent:'flex-end' }}>
                   <button onClick={() => {
-                    const valid = insType === 'Family Floater'
+                    const valid = Boolean(insType && insFrom && insDest) && (insType === 'Family Floater'
                       ? insTravelers.slice(0, insPersons).every(t => t.dob && t.relationship)
-                      : Boolean(insDob);
+                      : Boolean(insDob));
 
                     if (!valid) {
                       setShowInsuranceErrors(true);

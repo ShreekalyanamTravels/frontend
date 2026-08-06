@@ -55,20 +55,6 @@ function normalizeStatus(status: string): string {
   return 'Pending';
 }
 
-/* Best-effort human-readable summary of booking.automation_responce (see reviewBooking.ts) —
- * today that's always the stub `{status:"SKIPPED", reason:"..."}` object, but this also handles
- * a real Yatra reviewBooking response shape once that's wired up, and falls back gracefully for
- * anything else rather than dumping raw JSON on the page. */
-function describeAutomationResponse(raw: string | null): string {
-  if (!raw) return 'Waiting for the airline automation to run.';
-  try {
-    const parsed = JSON.parse(raw) as { reason?: string; bookingStatus?: string; status?: string };
-    return parsed.reason || parsed.bookingStatus || parsed.status || 'Automation ran; awaiting ticket confirmation.';
-  } catch {
-    return 'Automation ran; awaiting ticket confirmation.';
-  }
-}
-
 const STATUS_COLOR: Record<string, { bg: string; color: string }> = {
   Ticketed:  { bg: '#e8f5e9', color: '#2d8a4e' },
   Pending:   { bg: '#fff8e1', color: '#b8860b' },
@@ -77,14 +63,29 @@ const STATUS_COLOR: Record<string, { bg: string; color: string }> = {
   'On Hold': { bg: '#f3e5f5', color: '#6a1b9a' },
 };
 
-const STATUS_MESSAGE: Record<string, { title: string; sub: string; note: string }> = {
-  Ticketed:  { title: 'Payment Successful',   sub: 'When Your tickets are confirmed. E-tickets have been sent to your registered email.', note: 'Ticketed' },
+function normalizePaymentStatus(status: string | null): string {
+  const s = (status ?? '').trim().toLowerCase();
+  if (s.includes('fail')) return 'Failed';
+  if (s.includes('refund')) return 'Refunded';
+  if (s.includes('pend')) return 'Pending';
+  return 'Successful';
+}
+
+const PAYMENT_STATUS_COLOR: Record<string, { bg: string; color: string }> = {
+  Successful: { bg: '#e8f5e9', color: '#2d8a4e' },
+  Pending:    { bg: '#fff8e1', color: '#b8860b' },
+  Failed:     { bg: '#fce4ec', color: '#c9184a' },
+  Refunded:   { bg: '#e3f2fd', color: '#1565c0' },
+};
+
+const STATUS_MESSAGE: Record<string, { title: string; sub: string }> = {
+  Ticketed:  { title: 'Payment Successful',   sub: 'When Your tickets are confirmed. E-tickets have been sent to your registered email.' },
   // Payment has definitely gone through by the time this page loads — status only reflects
   // whether the airline ticket itself has been confirmed yet (see booking.status in createBooking.ts).
-  Pending:   { title: 'Payment Successful!',  sub: 'Your payment has been received. Your ticket is awaiting airline confirmation and will update automatically once issued.', note: 'Pending Confirmation' },
-  Cancelled: { title: 'Booking Cancelled',    sub: 'This booking has been cancelled.', note: 'Cancelled' },
-  Refunded:  { title: 'Booking Refunded',     sub: 'This booking has been refunded.', note: 'Refund processed' },
-  'On Hold': { title: 'Booking On Hold',      sub: 'Part of this booking is on hold pending airline confirmation.', note: 'On hold' },
+  Pending:   { title: 'Payment Successful!',  sub: 'Your payment has been received. Your ticket is awaiting airline confirmation and will update automatically once issued.' },
+  Cancelled: { title: 'Booking Cancelled',    sub: 'This booking has been cancelled.' },
+  Refunded:  { title: 'Booking Refunded',     sub: 'This booking has been refunded.' },
+  'On Hold': { title: 'Booking On Hold',      sub: 'Part of this booking is on hold pending airline confirmation.' },
 };
 
 const FARE_RULES = [
@@ -244,6 +245,8 @@ function ConfirmationContent() {
   const bStatus   = normalizeStatus(booking.status);
   const statusClr = STATUS_COLOR[bStatus] ?? STATUS_COLOR.Pending;
   const message   = STATUS_MESSAGE[bStatus] ?? STATUS_MESSAGE.Pending;
+  const pStatus    = normalizePaymentStatus(booking.paymentStatus);
+  const pStatusClr = PAYMENT_STATUS_COLOR[pStatus] ?? PAYMENT_STATUS_COLOR.Successful;
   const isRound   = booking.tripType === 'round';
   const travelDt  = sectors[0]?.date ?? '';
 
@@ -263,11 +266,9 @@ function ConfirmationContent() {
         <BookingProgress step={6} />
       </div>
 
-      {/* HERO — status banner. Payment has definitely succeeded by the time this page loads
-       * (see the Payment Status badge below, which is always "Successful") regardless of
-       * whether the airline ticket itself is confirmed yet — so this stays green for
+      {/* HERO — status banner, driven by ticket status (bStatus): stays green for
        * Ticketed/Pending/On Hold alike, and only turns red once the booking is actually
-       * Cancelled/Refunded (payment no longer stands). */}
+       * Cancelled/Refunded. See the Payment Status badge below for booking.payment_status. */}
       <div style={{ background: bStatus === 'Cancelled' || bStatus === 'Refunded'
           ? 'linear-gradient(135deg,#7a1a2e 0%,#8a2d3c 55%,#5c1a24 100%)'
           : 'linear-gradient(135deg,#1a7a3c 0%,#2d8a4e 55%,#1a5c2e 100%)',
@@ -344,19 +345,18 @@ function ConfirmationContent() {
               </div>
             </div>
 
-            {/* Payment Status — separate from ticket status: payment has definitely gone
-             * through by the time this page loads, regardless of whether the airline has
-             * confirmed the ticket yet. */}
+            {/* Payment Status — separate from ticket status; driven by booking.payment_status,
+             * not derived from the airline ticket confirmation state. */}
             <div style={{ borderLeft: '1px solid #f0e8e8', paddingLeft: 24, flexShrink: 0 }}>
               <div style={{ fontSize: 10, color: '#bbb', textTransform: 'uppercase',
                 letterSpacing: '.08em', marginBottom: 8 }}>Payment Status</div>
               <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6,
-                background: STATUS_COLOR.Ticketed.bg, border: `1.5px solid ${STATUS_COLOR.Ticketed.color}`,
+                background: pStatusClr.bg, border: `1.5px solid ${pStatusClr.color}`,
                 borderRadius: 20, padding: '5px 14px' }}>
-                <div style={{ width: 7, height: 7, borderRadius: '50%', background: STATUS_COLOR.Ticketed.color }} />
-                <span style={{ fontSize: 12.5, fontWeight: 800, color: STATUS_COLOR.Ticketed.color }}>Successful</span>
+                <div style={{ width: 7, height: 7, borderRadius: '50%', background: pStatusClr.color }} />
+                <span style={{ fontSize: 12.5, fontWeight: 800, color: pStatusClr.color }}>{pStatus}</span>
               </div>
-              
+
             </div>
 
             {/* Ticket Status — driven by booking.status, which starts 'Pending' and only
@@ -372,11 +372,7 @@ function ConfirmationContent() {
                 <span style={{ fontSize: 12.5, fontWeight: 800, color: statusClr.color }}>{bStatus}</span>
               </div>
               <div style={{ fontSize: 11, color: '#aaa', marginTop: 8, maxWidth: 150, lineHeight: 1.4 }}>
-                {bStatus === 'Ticketed'
-                  ? message.note
-                  : booking.automationEnabled
-                    ? describeAutomationResponse(booking.automationResponse)
-                    : 'Tickets will be generated and sent on your email.'}
+                Once your ticket is confirmed, the e-ticket will be sent to your registered email address.
               </div>
             </div>
           </div>

@@ -67,6 +67,60 @@ function appendFlightParams(
   params.set(`${prefix}_fareId`, flight.fareId);
   params.set(`${prefix}_refundable`, String(flight.refundable));
   params.set(`${prefix}_yatraId`, flight.yatraId);
+  params.set(`${prefix}_flight_id`, base64Encode(flight.yatraId));
+  params.set(`${prefix}_data`, base64Encode(flight));
+  params.set(`${prefix}_scid`, flight.scid);
+  params.set(`${prefix}_supplierCode`, flight.supplierCode);
+}
+
+/* Browser-safe UTF-8 base64 encode — mirrors PHP's base64_encode(json_encode($x)) from the
+ * Laravel reference (route('flights_detail', ['flight_id'=>base64_encode(...), 'data'=>...])). */
+function base64Encode(value: unknown): string {
+  const json = JSON.stringify(value);
+  return btoa(encodeURIComponent(json).replace(/%([0-9A-F]{2})/g,
+    (_, hex: string) => String.fromCharCode(parseInt(hex, 16))));
+}
+
+function extractAirportCode(cityLabel: string): string {
+  return cityLabel.match(/\(([^)]+)\)/)?.[1] ?? '';
+}
+
+/* Mirrors Laravel's $requestd_data — the exact array shape flights_list() builds and hands to
+ * searchFlights() for the live Yatra API call — so the same "data for the live API" can be
+ * base64-encoded and carried forward past the results page (Laravel's `encodeDataForApi` route
+ * param), instead of only living in the browser's current-page URL. */
+function buildEncodeDataForApi(sp: URLSearchParams): Record<string, unknown> {
+  const type = sp.get('type') ?? '';
+  const fromCities = sp.getAll('from_city[]');
+  const toCities = sp.getAll('to_city[]');
+  const originCountry = sp.getAll('origin_country[]');
+  const destinationCountry = sp.getAll('destination_country[]');
+  const departures = sp.getAll('departure[]');
+  const isDomestic = originCountry.includes('IN') && destinationCountry.includes('IN');
+
+  const data: Record<string, unknown> = {
+    type,
+    viewName: 'normal',
+    flexi: sp.get('fare_type') || '1',
+    noOfSegments: sp.get('no_segments') ?? '',
+    originCountry,
+    origin: fromCities.map(extractAirportCode),
+    destinationCountry,
+    destination: toCities.map(extractAirportCode),
+    flight_depart_date: departures,
+    travelers: sp.getAll('travelers[]'),
+    ADT: sp.get('adults') ?? '',
+    CHD: sp.get('childs') ?? '',
+    INF: sp.get('infants') ?? '',
+    class: sp.get('class') ?? '',
+    hb: 1,
+    origin_city: fromCities,
+    destination_city: toCities,
+    flight_type: isDomestic ? 'Domestic' : 'International',
+  };
+  if (type === 'R') data.arrivalDate = departures[1] ?? '';
+  if (type !== 'M') { data.source = 'fresco-home'; data['booking-type'] = 'official'; }
+  return data;
 }
 
 const inter    = Inter({ subsets:['latin'], weight:['400','500','600','700','800'] });
@@ -102,6 +156,9 @@ type Flight  = {
   dur: string; durMin: number; stops: number; stopsLabel: string; price: number;
   fareId: string; refundable: boolean; fareOptions: FareOption[];
   segments: Segment[];
+  /** Yatra's supplier/vendor code and search-session id — needed alongside yatraId for the
+   * live pricing re-check call (/api/flights/price) on review-booking. */
+  supplierCode: string; scid: string;
 };
 
 
@@ -559,6 +616,10 @@ function ResultsPageInner() {
     params.set(`${prefix}_fareId`, flight.fareId);
     params.set(`${prefix}_refundable`, String(flight.refundable));
     params.set(`${prefix}_yatraId`, flight.yatraId);
+    params.set(`${prefix}_flight_id`, base64Encode(flight.yatraId));
+    params.set(`${prefix}_data`, base64Encode(flight));
+    params.set(`${prefix}_scid`, flight.scid);
+    params.set(`${prefix}_supplierCode`, flight.supplierCode);
   }
 
   function toggleArr<T>(set: Dispatch<SetStateAction<T[]>>, val: T) {
@@ -963,6 +1024,9 @@ function ResultsPageInner() {
                     // downstream pages (passenger-details/review-booking/payment-details) can
                     // re-run the same search to check whether the fare has changed since selection.
                     origSearch: searchParams.toString(),
+                    // Laravel-equivalent of $encodeDataForApi — same "data for the live API" as
+                    // origSearch above, just base64-encoded into the $requestd_data shape.
+                    encodeDataForApi: base64Encode(buildEncodeDataForApi(searchParams)),
                   });
                   if (trip === 'round') {
                     // Round trip downstream (passenger-details/review-booking/payment-details)
@@ -1216,9 +1280,14 @@ function ResultsPageInner() {
                   const params = new URLSearchParams({
                     trip, adults: String(adults), childs: String(children), infants: String(infants),
                     origSearch: searchParams.toString(),
+                    encodeDataForApi: base64Encode(buildEncodeDataForApi(searchParams)),
                   });
                   appendFlightParams(params, 'out', f, depDate,
                     fromCitiesList[0] || f.from, toCitiesList[0] || f.to, fromCountry, toCountry);
+                  // Matches Laravel's route('flights_detail', ['flight_id'=>base64_encode($flightRoot->ID),
+                  // 'data'=>$encodedData, ...]) literally, for the one-way case (a single selected flight).
+                  params.set('flight_id', base64Encode(f.yatraId));
+                  params.set('data', base64Encode(f));
                   window.location.href = `/corporate/passenger-details?${params.toString()}`;
                 }}
               />

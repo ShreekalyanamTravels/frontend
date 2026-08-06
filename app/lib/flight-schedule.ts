@@ -68,8 +68,25 @@ export function parseFlightItinerary(base64: string | null, bookingRootSector: s
   if (!base64 || !bookingRootSector) return null;
   try {
     const text = Buffer.from(base64, "base64").toString("utf8");
+    // createBooking.ts stores this as base64(PHP serialize(...)) — matching Laravel's own
+    // base64_encode(serialize($flight_detail)) exactly, for both legacy/admin-created bookings
+    // and ones created by this app. The JSON fallback below only exists for rows written during
+    // this app's brief earlier window of storing base64(JSON.stringify(...)) instead; safe to
+    // remove once no such rows remain.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const decoded: any = unserialize(text, {}, { strict: false });
+    let decoded: any;
+    try {
+      decoded = unserialize(text, {}, { strict: false });
+    } catch {
+      decoded = null;
+    }
+    if (!decoded?.data) {
+      try {
+        decoded = JSON.parse(text);
+      } catch {
+        decoded = null;
+      }
+    }
     const data = decoded?.data;
     if (!data) return null;
 

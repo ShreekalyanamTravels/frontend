@@ -147,6 +147,52 @@ function buildPriceCheckLegs(
   return legs.filter((l): l is PriceCheckLeg => l !== null);
 }
 
+/* Builds the single combined /api/flights/price request for every real leg of this booking —
+ * mirrors Laravel's preview_travel_show(), which calls flightDetail() a second time (after
+ * passenger-details' own call) right before showing this same review page, comma-joining
+ * flightIdCSV/sc across all legs rather than one call per leg. Returns null if any leg is
+ * missing the scid/supplierCode/yatraId/price needed (e.g. a demo/fallback booking). */
+function buildLivePriceRequest(
+  sp: { get(key: string): string | null },
+  isMulti: boolean,
+  isRound: boolean,
+  segCount: number,
+): { searchId: string; supplierCode: string; flightId: string; price: number; originCountry: string; destinationCountry: string } | null {
+  const prefixes = isMulti
+    ? Array.from({ length: segCount }, (_, i) => `leg${i}`)
+    : isRound ? ['out', 'ret'] : ['out'];
+
+  const scids: string[] = [];
+  const supplierCodes: string[] = [];
+  const flightIds: string[] = [];
+  const originCountries: string[] = [];
+  const destinationCountries: string[] = [];
+  let totalPrice = 0;
+
+  for (const prefix of prefixes) {
+    const scid = sp.get(`${prefix}_scid`);
+    const supplierCode = sp.get(`${prefix}_supplierCode`);
+    const yatraId = sp.get(`${prefix}_yatraId`);
+    const price = Number(sp.get(`${prefix}_price`));
+    if (!scid || !supplierCode || !yatraId || !price) return null;
+    scids.push(scid);
+    supplierCodes.push(supplierCode);
+    flightIds.push(yatraId);
+    originCountries.push(sp.get(`${prefix}_fromCountry`) ?? '');
+    destinationCountries.push(sp.get(`${prefix}_toCountry`) ?? '');
+    totalPrice += price;
+  }
+
+  return {
+    searchId: scids[0],
+    supplierCode: supplierCodes.join(','),
+    flightId: flightIds.join(','),
+    price: totalPrice,
+    originCountry: originCountries.join(','),
+    destinationCountry: destinationCountries.join(','),
+  };
+}
+
 /* Rebuild the traveller list from the `${kind}N_*` params passenger-details forwards. */
 function buildPassengersFromParams(sp: { get(key: string): string | null }): Passenger[] {
   const adults   = Math.max(0, parseInt(sp.get('adults')  ?? '0', 10) || 0);
@@ -689,6 +735,27 @@ function ReviewContent() {
   const { changes: priceChanges, dismiss: dismissPriceChanges } =
     useFlightPriceCheck(searchParams.get('origSearch'), priceCheckLegs);
 
+  // Live Yatra pricing re-check — mirrors Laravel's preview_travel_show() calling flightDetail()
+  // a second time before showing this review page. Verification-only: the result isn't threaded
+  // into the "Confirm & Pay" navigation below (which still forwards searchParams.toString()
+  // untouched), so this doesn't change anything payment-details/booking creation receives.
+  const [liveFlightsData, setLiveFlightsData] = useState<unknown>(null);
+  useEffect(() => {
+    const req = buildLivePriceRequest(searchParams, isMulti, isRound, realSegments.length);
+    if (!req) return;
+    let cancelled = false;
+    const qs = new URLSearchParams({
+      searchId: req.searchId, supplierCode: req.supplierCode, flightId: req.flightId,
+      price: String(req.price), originCountry: req.originCountry, destinationCountry: req.destinationCountry,
+    });
+    fetch(`/api/flights/price?${qs.toString()}`)
+      .then(res => res.json())
+      .then(json => { if (!cancelled && json?.status) setLiveFlightsData(json.data); })
+      .catch(() => { /* best-effort — review page still works off the trusted client price */ });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
     <div className={inter.className} style={{ background: '#fdf6f2', minHeight: '100vh', color: '#1a1a2e' }}>
       <PriceChangeNotice changes={priceChanges} onDismiss={dismissPriceChanges} />
@@ -882,10 +949,19 @@ function ReviewContent() {
 
           {/* Secure badge */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center',
-            gap: 6, marginBottom: 16 }}>
+            gap: 6, marginBottom: liveFlightsData ? 4 : 16 }}>
             <span style={{ fontSize: 15 }}>🔒</span>
             <span style={{ fontSize: 11, color: '#aaa', fontWeight: 500 }}>Secure &amp; Encrypted Payment</span>
           </div>
+
+          {/* Live fare re-check confirmation — purely informational, doesn't affect the amount
+             charged or what's sent to payment-details. */}
+          {liveFlightsData ? (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center',
+              gap: 5, marginBottom: 16 }}>
+              <span style={{ fontSize: 11, color: '#2d8a4e', fontWeight: 600 }}>✓ Live fare verified with airline</span>
+            </div>
+          ) : null}
 
           {/* Confirm button */}
           <button

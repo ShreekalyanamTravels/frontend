@@ -174,6 +174,51 @@ function buildPriceCheckLegs(
   return legs.filter((l): l is PriceCheckLeg => l !== null);
 }
 
+/* Builds the single combined /api/flights/price request for every real leg of this booking —
+ * mirrors Laravel's flights_payments(), which calls flightDetail() a third time (after
+ * passenger-details' and review-booking's own calls) right before showing this payment page.
+ * Returns null if any leg is missing the scid/supplierCode/yatraId/price needed. */
+function buildLivePriceRequest(
+  sp: { get(key: string): string | null },
+  isMulti: boolean,
+  isRound: boolean,
+  segCount: number,
+): { searchId: string; supplierCode: string; flightId: string; price: number; originCountry: string; destinationCountry: string } | null {
+  const prefixes = isMulti
+    ? Array.from({ length: segCount }, (_, i) => `leg${i}`)
+    : isRound ? ['out', 'ret'] : ['out'];
+
+  const scids: string[] = [];
+  const supplierCodes: string[] = [];
+  const flightIds: string[] = [];
+  const originCountries: string[] = [];
+  const destinationCountries: string[] = [];
+  let totalPrice = 0;
+
+  for (const prefix of prefixes) {
+    const scid = sp.get(`${prefix}_scid`);
+    const supplierCode = sp.get(`${prefix}_supplierCode`);
+    const yatraId = sp.get(`${prefix}_yatraId`);
+    const price = Number(sp.get(`${prefix}_price`));
+    if (!scid || !supplierCode || !yatraId || !price) return null;
+    scids.push(scid);
+    supplierCodes.push(supplierCode);
+    flightIds.push(yatraId);
+    originCountries.push(sp.get(`${prefix}_fromCountry`) ?? '');
+    destinationCountries.push(sp.get(`${prefix}_toCountry`) ?? '');
+    totalPrice += price;
+  }
+
+  return {
+    searchId: scids[0],
+    supplierCode: supplierCodes.join(','),
+    flightId: flightIds.join(','),
+    price: totalPrice,
+    originCountry: originCountries.join(','),
+    destinationCountry: destinationCountries.join(','),
+  };
+}
+
 /* Rebuild the traveller list from the `${kind}N_*` params passenger-details forwards. */
 function buildPassengersFromParams(sp: { get(key: string): string | null }): Passenger[] {
   const adults   = Math.max(0, parseInt(sp.get('adults')  ?? '0', 10) || 0);
@@ -608,6 +653,10 @@ function PaymentContent() {
       serviceFee,
       convenienceFee,
       totalPayableAmt: finalTotalAmt,
+      // Raw live Yatra pricing re-check fetched above (if it resolved in time) — sent as-is;
+      // createBooking.ts does the PHP-serialize + base64 encoding server-side so it matches
+      // Laravel's $flightSerializedData format byte-for-byte, not just this app's own JSON.
+      flightsData: liveFlightsData ?? undefined,
       gst: searchParams.get('gstCompanyName') && searchParams.get('gstNo') ? {
         companyName: searchParams.get('gstCompanyName') ?? '',
         registrationNo: searchParams.get('gstRegNo') ?? '',
@@ -691,6 +740,36 @@ function PaymentContent() {
   const priceCheckLegs = buildPriceCheckLegs(searchParams, isMulti, isRound, realSegments.length);
   const { changes: priceChanges, dismiss: dismissPriceChanges } =
     useFlightPriceCheck(searchParams.get('origSearch'), priceCheckLegs);
+
+  // Live Yatra pricing re-check — mirrors Laravel's flights_payments() calling flightDetail() a
+  // third time before showing this payment page. Mandatory for flight bookings: booking.
+  // flightsDataArray must be populated (matching the reference app), so payment stays blocked
+  // until this succeeds. 'missing' means the URL itself lacks the scid/supplierCode/yatraId/price
+  // this needs (e.g. a stale page from before a deploy) — retrying won't fix that, only a fresh
+  // search will, so that case gets its own message instead of a Retry button.
+  const [liveFlightsData, setLiveFlightsData] = useState<unknown>(null);
+  const [livePriceStatus, setLivePriceStatus] = useState<'checking' | 'ready' | 'missing' | 'failed'>('checking');
+  const [livePriceAttempt, setLivePriceAttempt] = useState(0);
+  useEffect(() => {
+    const req = buildLivePriceRequest(searchParams, isMulti, isRound, realSegments.length);
+    if (!req) { setLivePriceStatus('missing'); return; }
+    let cancelled = false;
+    setLivePriceStatus('checking');
+    const qs = new URLSearchParams({
+      searchId: req.searchId, supplierCode: req.supplierCode, flightId: req.flightId,
+      price: String(req.price), originCountry: req.originCountry, destinationCountry: req.destinationCountry,
+    });
+    fetch(`/api/flights/price?${qs.toString()}`)
+      .then(res => res.json())
+      .then(json => {
+        if (cancelled) return;
+        if (json?.status && json.data) { setLiveFlightsData(json.data); setLivePriceStatus('ready'); }
+        else { setLivePriceStatus('failed'); }
+      })
+      .catch(() => { if (!cancelled) setLivePriceStatus('failed'); });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [livePriceAttempt]);
 
   if (userLoading) {
     return <div style={{ minHeight: '100vh', background: '#fdf6f2' }} />;
@@ -997,10 +1076,44 @@ function PaymentContent() {
 
           {/* Secure badge */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center',
-            gap: 6, marginBottom: 12 }}>
+            gap: 6, marginBottom: 4 }}>
             <span style={{ fontSize: 15 }}>🔒</span>
             <span style={{ fontSize: 11, color: '#aaa', fontWeight: 500 }}>Secure &amp; Encrypted Payment</span>
           </div>
+
+          {/* Live fare re-check — mandatory for flight bookings (booking.flightsDataArray must be
+             populated, matching the reference app), so payment stays blocked until this succeeds. */}
+          {livePriceStatus === 'ready' && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center',
+              gap: 5, marginBottom: 12 }}>
+              <span style={{ fontSize: 11, color: '#2d8a4e', fontWeight: 600 }}>✓ Live fare verified with airline</span>
+            </div>
+          )}
+          {livePriceStatus === 'checking' && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center',
+              gap: 5, marginBottom: 12 }}>
+              <span style={{ fontSize: 11, color: '#888', fontWeight: 600 }}>⏳ Verifying live fare with airline…</span>
+            </div>
+          )}
+          {livePriceStatus === 'failed' && (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center',
+              gap: 4, marginBottom: 12 }}>
+              <span style={{ fontSize: 11, color: PK, fontWeight: 600 }}>⚠ Live fare verification failed</span>
+              <button onClick={() => setLivePriceAttempt(n => n + 1)} style={{
+                fontSize: 11, color: O, fontWeight: 700, background: 'none',
+                border: 'none', cursor: 'pointer', fontFamily: 'inherit', textDecoration: 'underline' }}>
+                Retry
+              </button>
+            </div>
+          )}
+          {livePriceStatus === 'missing' && (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center',
+              gap: 5, marginBottom: 12, textAlign: 'center' }}>
+              <span style={{ fontSize: 11, color: PK, fontWeight: 600 }}>
+                ⚠ Flight pricing data missing — please go back and search again.
+              </span>
+            </div>
+          )}
 
           {error && (
             <div style={{ fontSize: 12.5, color: PK, background: '#fdeef1', border: '1px solid #f3c6d0',
@@ -1010,12 +1123,12 @@ function PaymentContent() {
           )}
 
           {/* Pay Now */}
-          <button onClick={handlePay} disabled={!canPay} style={{ width: '100%', padding: '14px 0',
-            background: canPay ? `linear-gradient(135deg,${O},${O2})` : '#e8e2db',
-            color: canPay ? '#fff' : '#bbb', border: 'none', borderRadius: 10,
-            fontSize: 15, fontWeight: 800, cursor: canPay ? 'pointer' : 'not-allowed',
+          <button onClick={handlePay} disabled={!canPay || livePriceStatus !== 'ready'} style={{ width: '100%', padding: '14px 0',
+            background: (canPay && livePriceStatus === 'ready') ? `linear-gradient(135deg,${O},${O2})` : '#e8e2db',
+            color: (canPay && livePriceStatus === 'ready') ? '#fff' : '#bbb', border: 'none', borderRadius: 10,
+            fontSize: 15, fontWeight: 800, cursor: (canPay && livePriceStatus === 'ready') ? 'pointer' : 'not-allowed',
             fontFamily: 'inherit', letterSpacing: '.02em',
-            boxShadow: canPay ? `0 6px 20px ${O}55` : 'none', marginBottom: 10 }}>
+            boxShadow: (canPay && livePriceStatus === 'ready') ? `0 6px 20px ${O}55` : 'none', marginBottom: 10 }}>
             {payStatus === 'processing' ? 'Processing…' : `Pay Now ₹ ${finalTotalAmt.toLocaleString()}`}
           </button>
 

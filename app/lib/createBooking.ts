@@ -1,5 +1,6 @@
 import type { PoolConnection } from "mysql2/promise";
 import type { RowDataPacket, ResultSetHeader } from "mysql2";
+import { serialize } from "php-serialize";
 
 export interface BookingSectorInput {
   /** Full "City, Country (CODE)" label from the search form (e.g. "Jaipur, India (JAI)") — stored
@@ -69,6 +70,14 @@ export interface CreateBookingParams {
   paymentModeId: string; // payment_modes.id: 1=UPI 2=NetBanking 3=Credit 4=Debit 5=Creditpool
   transactionId: string;
   gst?: BookingGstInput;
+  /** Raw live Yatra pricing re-check response (payment-details' call to /api/flights/price,
+   * right before submitting) — PHP-serialized + base64-encoded here (not by the client) into
+   * booking.flightsDataArray, matching Laravel's `base64_encode(serialize($flight_detail))`
+   * exactly, so bookings created by this app stay readable by unserialize(base64_decode(...))
+   * everywhere the reference app reads it (invoice PDF, ticket view, booking detail). Mandatory:
+   * payment-details blocks Pay Now until this resolves, and parseBookingRequest() rejects any
+   * request missing it, so booking.flightsDataArray is never left null for a flight booking. */
+  flightsData: unknown;
 }
 
 // Client-supplied subset of CreateBookingParams (everything except corporateId/paymentModeId/
@@ -89,6 +98,10 @@ export function parseBookingRequest(body: unknown): BookingRequestInput | null {
   // Up to 6 sectors covers one-way (1), round trip (2), and multi-city (typically 2-6 legs).
   if (!Array.isArray(sectors) || sectors.length < 1 || sectors.length > 6) return null;
   if (!Array.isArray(passengers) || passengers.length < 1) return null;
+  // Mandatory: booking.flightsDataArray must never be left null for a flight booking — reject
+  // outright rather than silently proceeding without it (payment-details already blocks Pay Now
+  // client-side until this is present; this is the server-side backstop).
+  if (!b.flightsData || typeof b.flightsData !== "object") return null;
 
   const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : NaN);
   const str = (v: unknown) => (typeof v === "string" ? v : "");
@@ -167,6 +180,7 @@ export function parseBookingRequest(body: unknown): BookingRequestInput | null {
     passengers: parsedPassengers,
     totalFlightAmt, serviceFee, convenienceFee, totalPayableAmt,
     gst,
+    flightsData: b.flightsData,
   };
 }
 
@@ -233,20 +247,29 @@ export async function createBookingRecord(
   // overwriting whatever fare (SME Fare/Saver Fare/Flexi Plus/...) the user actually selected.
   const flightFareType = fareTypeJoined.replace(/,/g, "") ? fareTypeJoined : "Corp Fare";
 
+  // Matches Laravel's base64_encode(serialize($flight_detail)) byte-for-byte format (PHP
+  // serialize, not JSON) so unserialize(base64_decode(...)) — used everywhere the reference app
+  // reads this column (invoice PDF, ticket view, booking detail) — can read bookings this app
+  // creates too.
+  const flightsDataArray = p.flightsData
+    ? Buffer.from(serialize(p.flightsData), "utf8").toString("base64")
+    : null;
+
   const [bookingResult] = await conn.query<ResultSetHeader>(
     `INSERT INTO booking
       (booking_id, sequence_number, invoice_no, coroprate_id, country_code, mobile_no, email,
        adt, chd, inf, class, viewName, type, total_payable_amt, total_flight_amt, payment_mode,
        convenience_fee, service_fee, without_gst_service_fee, authorized_date, transaction_id,
        payment_status, pnr_number, flight_fare_type, booking_from, status, flight_no, flight_id,
-       company_name, gst_reg_no, gst_number, pincode, state, address)
+       flightsDataArray, company_name, gst_reg_no, gst_number, pincode, state, address)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'normal', ?, ?, ?, ?, ?, ?, ?, NOW(), ?,
-       'Success', ?, ?, 'Manual', 'SUCCESS', ?, ?, ?, ?, ?, ?, ?, ?)`,
+       'Success', ?, ?, 'Manual', 'SUCCESS', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       bookingId, String(seq), invoiceNo, p.corporateId, p.countryCode, p.mobile, p.email,
       p.adt, p.chd, p.inf, p.travelClass, p.tripLabel, String(p.totalPayableAmt), p.totalFlightAmt,
       p.paymentModeId, p.convenienceFee, p.serviceFee, p.serviceFee, p.transactionId, pnr,
       flightFareType, flightNo, flightId,
+      flightsDataArray,
       p.gst?.companyName || null, p.gst?.registrationNo || null, p.gst?.gstNumber || null,
       gstPincode, p.gst?.stateName || null, p.gst?.address || null,
     ]

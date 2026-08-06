@@ -38,7 +38,7 @@ export async function buildInsuranceInvoicePdf(ref: string, corporateUserId?: st
     InsuranceInvoiceDocument({
       invoiceNo: `INV-${booking.ref}`,
       invoiceDate: fmtDate(booking.created_at ?? booking.booking_date),
-      policyNo: booking.ref,
+      policyNo: booking.policy_number || booking.ref,
       billToName: booking.client_name,
       billToPhone: booking.client_phone,
       billToGst,

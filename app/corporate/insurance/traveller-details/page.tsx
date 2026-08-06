@@ -92,6 +92,7 @@ function TravellerDetailsContent() {
   const dep      = sp.get('dep')  || '';
   const ret      = sp.get('ret')  || '';
   const total    = parseInt(sp.get('total') || '0');
+  const leadDob  = sp.get('dob') || '';
 
   const plan      = getPlanById(planId);
   const planName  = sp.get('planName') || plan?.name || 'Travel Insurance Plan';
@@ -117,7 +118,10 @@ function TravellerDetailsContent() {
     address1: '', address2: '', state: '', district: '', city: '', pincode: '', gst: '',
   });
   const [travellers, setTravellers] = useState<TravellerForm[]>(
-    Array.from({ length: totalTravellers }, (_, i) => emptyTraveller(i + 1, i >= adults))
+    Array.from({ length: totalTravellers }, (_, i) => {
+      const t = emptyTraveller(i + 1, i >= adults);
+      return i === 0 && leadDob ? { ...t, dob: leadDob } : t;
+    })
   );
 
   function updProp(f: keyof ProposerForm, v: string) {
@@ -423,9 +427,11 @@ function TravellerDetailsContent() {
                   <div style={{ position: 'relative' }}>
                     <span style={{ position: 'absolute', top: -8, left: 10, background: '#fff',
                       padding: '0 4px', fontSize: 10, color: showErrors && !t.dob ? '#e02424' : '#888', zIndex: 1 }}>Date of Birth*</span>
-                    <input type="date" value={t.dob}
+                    <input type="date" value={t.dob} disabled={idx === 0 && !!leadDob}
                       onChange={e => updTrav(t.id, 'dob', e.target.value)}
-                      style={fieldStyle({ ...INP, paddingTop: 11 }, showErrors && !t.dob)} />
+                      style={fieldStyle({ ...INP, paddingTop: 11,
+                        ...(idx === 0 && leadDob ? { background: '#f2f2f2', color: '#777', cursor: 'not-allowed' } : {}) },
+                        showErrors && !t.dob)} />
                   </div>
                 </div>
 

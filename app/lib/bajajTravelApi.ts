@@ -446,6 +446,7 @@ export interface BajajIssuePolicyResult {
 }
 
 interface IssuePolicyResponse extends BajajEnvelopeResponse {
+  pWeoTrvProcessPolicyIn_inout?: { policyNo?: string } & Record<string, unknown> | null;
   pPolicyObj_out?: { ppolicyRef?: string } & Record<string, unknown> | null;
 }
 
@@ -598,7 +599,7 @@ export async function issueBajajPolicy(input: BajajIssuePolicyInput): Promise<Ba
   try {
     const data = await postToBajaj<IssuePolicyResponse>("/BjazTravelWebServices/issuepolicy", requestBody);
     return {
-      policyNumber: data.pPolicyObj_out?.ppolicyRef || "",
+      policyNumber: data.pWeoTrvProcessPolicyIn_inout?.policyNo || data.pPolicyObj_out?.ppolicyRef || "",
       requestBody,
       raw: data,
     };
