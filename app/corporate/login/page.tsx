@@ -1,13 +1,16 @@
 'use client';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import ReCAPTCHA from 'react-google-recaptcha';
 import { Playfair_Display, Inter } from 'next/font/google';
 import CorpNav from '../components/CorpNav';
 import CorpFooter from '../components/CorpFooter';
 
 const playfair = Playfair_Display({ subsets:['latin'], weight:['400','700'], style:['italic','normal'] });
 const inter    = Inter({ subsets:['latin'], weight:['400','500','600','700','800'] });
+
+const RECAPTCHA_ENABLED = process.env.NEXT_PUBLIC_RECAPTCHA_ENABLED === 'true';
 
 const PARTNERS = [
   'Tata Group','Infosys','Wipro','HCL Technologies','Reliance Industries','HDFC Bank','Mahindra','Bajaj Finserv',
@@ -39,6 +42,42 @@ export default function CorporateLoginPage() {
   const [tab,      setTab]      = useState<'login'|'reset'>('login');
   const [newPass,  setNewPass]  = useState('');
   const [confPass, setConfPass] = useState('');
+  const [error,    setError]    = useState('');
+  const [loading,  setLoading]  = useState(false);
+  const [recaptchaToken, setRecaptchaToken] = useState<string | null>(null);
+  const recaptchaRef = useRef<ReCAPTCHA>(null);
+
+  async function handleSignIn() {
+    setError('');
+    if (!email || !password) {
+      setError('Please enter your email and password.');
+      return;
+    }
+    if (RECAPTCHA_ENABLED && !recaptchaToken) {
+      setError('Please complete the reCAPTCHA.');
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password, recaptchaToken }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error ?? 'Invalid email or password');
+        recaptchaRef.current?.reset();
+        setRecaptchaToken(null);
+        return;
+      }
+      router.push('/corporate/dashboard');
+    } catch {
+      setError('Something went wrong. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  }
 
   const inp: React.CSSProperties = {
     width:'100%', padding:'11px 14px', background:'#edf1f9',
@@ -139,19 +178,23 @@ export default function CorporateLoginPage() {
                       </div>
                     </div>
 
-                    {/* reCAPTCHA mock */}
-                    <div style={{ border:'1px solid #ddd', borderRadius:6, padding:'11px 14px',
-                      display:'flex', alignItems:'center', justifyContent:'space-between', background:'#f9f9f9' }}>
-                      <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-                        <div style={{ width:20, height:20, border:'2px solid #bbb', borderRadius:3 }} />
-                        <span style={{ fontSize:13, color:'#555' }}>I'm not a robot</span>
+                    {RECAPTCHA_ENABLED && (
+                      <div style={{ transform:'scale(0.92)', transformOrigin:'left' }}>
+                        <ReCAPTCHA
+                          ref={recaptchaRef}
+                          sitekey={process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY!}
+                          onChange={token => setRecaptchaToken(token)}
+                          onExpired={() => setRecaptchaToken(null)}
+                        />
                       </div>
-                      <div style={{ textAlign:'center' }}>
-                        <div style={{ fontSize:22 }}>🔄</div>
-                        <div style={{ fontSize:7.5, color:'#aaa' }}>reCAPTCHA</div>
-                        <div style={{ fontSize:7, color:'#ccc' }}>Privacy · Terms</div>
+                    )}
+
+                    {error && (
+                      <div style={{ fontSize:12.5, color:'#c9184a', background:'#fdeef1',
+                        border:'1px solid #f3c6d0', borderRadius:8, padding:'9px 12px' }}>
+                        {error}
                       </div>
-                    </div>
+                    )}
 
                     <div style={{ textAlign:'right', marginTop:-6 }}>
                       <button onClick={() => setTab('reset')}
@@ -161,11 +204,12 @@ export default function CorporateLoginPage() {
                       </button>
                     </div>
 
-                    <button onClick={() => router.push('/corporate/dashboard')}
+                    <button onClick={handleSignIn} disabled={loading}
                       style={{ width:'100%', padding:'13px', background:'#9b1535', color:'#fff',
-                      border:'none', borderRadius:9, fontSize:14.5, fontWeight:700, cursor:'pointer',
+                      border:'none', borderRadius:9, fontSize:14.5, fontWeight:700,
+                      cursor: loading ? 'default' : 'pointer', opacity: loading ? 0.7 : 1,
                       letterSpacing:'.02em' }}>
-                      Sign In →
+                      {loading ? 'Signing in…' : 'Sign In →'}
                     </button>
                   </div>
                 </>
