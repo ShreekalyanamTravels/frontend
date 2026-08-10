@@ -173,14 +173,17 @@ export async function chargeWallet(
   return { walletDeducted, odDeducted: odDeducted + tempOdUsed, tempOdUsed, balanceAfter: newMainBalance };
 }
 
-/* Credits `amount` into the Main Balance — a payment-gateway recharge. Adds to current_balance
- * directly (simple addition — naturally clears a negative/OD-borrowed balance first, since
- * -8039 + 10000 = 1961). Whatever portion of the recharge went toward clearing that negative
- * balance is also restored to current_od_balance (repaying OD debt gives the credit line back),
- * capped at permanent_od_bal so it can never exceed the admin-set limit. If current_balance was
- * already >= 0, none of the recharge counts as debt repayment and current_od_balance is
- * untouched. temp_od_bal is never restored here — it's a separate, time-limited bonus, not part
- * of the permanent credit line. Must run inside an already-open transaction (conn). */
+/* Credits `amount` into the Credit Pool — a payment-gateway recharge. OD debt is repaid FIRST:
+ * whatever gap exists between permanent_od_bal (the limit) and current_od_balance is closed out of
+ * the recharge, capped at permanent_od_bal so it can never exceed the admin-set limit. Only the
+ * amount left over after fully repaying that gap is added to current_balance (Main Balance).
+ * Based on the OD gap rather than on current_balance being negative, since current_od_balance can
+ * fall below its limit without current_balance going negative (e.g. a booking recorded by the
+ * legacy admin panel's own flow, which decrements current_od_balance directly) — in that case the
+ * old "only restore OD if the wallet is negative" check silently skipped repayment and dumped the
+ * whole recharge into Main Balance instead. temp_od_bal is never restored here — it's a separate,
+ * time-limited bonus, not part of the permanent credit line. Must run inside an already-open
+ * transaction (conn). */
 export async function creditWallet(
   conn: PoolConnection,
   userId: string | number,
@@ -195,11 +198,11 @@ export async function creditWallet(
   if (!row) throw new Error("User not found");
 
   const before = snapshotOf(row);
-  const newMainBalance = before.walletBalance + amount;
 
-  const owed = Math.max(0, -before.walletBalance);
-  const odRestored = Math.min(amount, owed);
-  const newCurrentOdBalance = Math.min(before.permanentOdLimit, before.currentOdBalance + odRestored);
+  const odGap = Math.max(0, before.permanentOdLimit - before.currentOdBalance);
+  const odRestored = Math.min(amount, odGap);
+  const newCurrentOdBalance = before.currentOdBalance + odRestored;
+  const newMainBalance = before.walletBalance + (amount - odRestored);
 
   await conn.query("UPDATE users SET current_balance = ?, current_od_balance = ? WHERE id = ?", [
     newMainBalance, newCurrentOdBalance, userId,
