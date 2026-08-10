@@ -49,27 +49,44 @@ function cache(): Map<string, { row: SeoPageRow | null; expires: number }> {
 }
 
 /* Looks up a page's editable SEO fields by its stable page_key (not the URL — keys don't change
- * even if a route is renamed). Returns null if the page hasn't been seeded yet, so callers can
- * fall back to site defaults rather than failing to render. */
+ * even if a route is renamed). Returns null if the page hasn't been seeded yet, OR if the DB is
+ * unreachable, so callers always fall back to site defaults rather than failing to render. This
+ * runs from generateMetadata() on statically-generated marketing pages, so a DB hiccup at build
+ * time (bad env var, transient network blip) must not take down the whole `next build` — better
+ * to ship the page with default metadata than to fail the deploy. Not cached, so a real outage
+ * doesn't get pinned as "unseeded" for the TTL window. */
 export async function getPageSeo(pageKey: string): Promise<SeoPageRow | null> {
   const cached = cache().get(pageKey);
   if (cached && cached.expires > Date.now()) return cached.row;
 
-  const [rows] = await pool.query<SeoPageRow[]>(
-    "SELECT * FROM seo_pages WHERE page_key = ? LIMIT 1",
-    [pageKey]
-  );
-  const row = rows[0] ?? null;
+  let row: SeoPageRow | null;
+  try {
+    const [rows] = await pool.query<SeoPageRow[]>(
+      "SELECT * FROM seo_pages WHERE page_key = ? LIMIT 1",
+      [pageKey]
+    );
+    row = rows[0] ?? null;
+  } catch (err) {
+    console.error(`getPageSeo(${pageKey}): falling back to site defaults`, err);
+    return null;
+  }
   cache().set(pageKey, { row, expires: Date.now() + TTL_MS });
   return row;
 }
 
-/* Every row that should appear in /sitemap.xml, ordered by priority. */
+/* Every row that should appear in /sitemap.xml, ordered by priority. Same fail-soft reasoning as
+ * getPageSeo: /sitemap.xml is also statically generated, so a DB error here would otherwise fail
+ * the whole build — an empty sitemap for one deploy is far better than a failed deploy. */
 export async function getSitemapRows(): Promise<SeoPageRow[]> {
-  const [rows] = await pool.query<SeoPageRow[]>(
-    "SELECT * FROM seo_pages WHERE include_in_sitemap = 1 ORDER BY page_priority DESC"
-  );
-  return rows;
+  try {
+    const [rows] = await pool.query<SeoPageRow[]>(
+      "SELECT * FROM seo_pages WHERE include_in_sitemap = 1 ORDER BY page_priority DESC"
+    );
+    return rows;
+  } catch (err) {
+    console.error("getSitemapRows: falling back to empty sitemap", err);
+    return [];
+  }
 }
 
 /* Builds a Next.js Metadata object for a page from its seo_pages row (or site defaults if the
