@@ -77,19 +77,12 @@ function transformRoute(
   cityNames: Record<string, string>,
   scid: string,
 ) {
-  // International responses have been observed to include malformed/partial entries
-  // (empty OD, or OD with no segments) that domestic responses never send — drop those
-  // instead of letting segmentSignature() throw on opt.OD[0].FS.
-  const validOptions = (Array.isArray(options) ? options : []).filter(
-    opt => Array.isArray(opt?.OD) && opt.OD[0] && Array.isArray(opt.OD[0].FS) && opt.OD[0].FS.length > 0
-  );
-
   // Multiple entries can represent the SAME physical flight (identical flight
   // numbers/times) with different fare bundles (Value, Flex, SME Fare, ...).
   // Group those together so the UI can show one card with a fare picker,
   // instead of one card per fare variant.
   const groups = new Map<string, YatraFlightOption[]>();
-  for (const opt of validOptions) {
+  for (const opt of options) {
     const sig = segmentSignature(opt);
     if (!groups.has(sig)) groups.set(sig, []);
     groups.get(sig)!.push(opt);
@@ -253,26 +246,20 @@ export async function searchFlights(input: FlightSearchInput) {
   }
 
   const url = `${baseUrl}?${parts.join("&")}`;
-  const flightType = isDomestic ? "Domestic" : "International";
 
-  let res: Response;
-  try {
-    res = await fetch(url, {
-      method: "GET",
-      headers: {
-        emailId: settings.email_id,
-        password: settings.password,
-        apiKey: settings.apiKey,
-        Host: settings.Host,
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-    });
-  } catch (err) {
-    console.error(`[flightSearch] Upstream request failed for ${flightType} search (${url}):`, err);
-    return { status: false, flightType, msg: "Could not reach the airline search service. Please try again.", legs: [] };
-  }
+  const res = await fetch(url, {
+    method: "GET",
+    headers: {
+      emailId: settings.email_id,
+      password: settings.password,
+      apiKey: settings.apiKey,
+      Host: settings.Host,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+  });
 
   const data = await res.json().catch(() => null);
+  const flightType = isDomestic ? "Domestic" : "International";
 
   const resultData = data?.resultData?.[0];
   if (!resultData || resultData.isFlights === "0" || resultData.isError === "true") {
@@ -284,59 +271,36 @@ export async function searchFlights(input: FlightSearchInput) {
     };
   }
 
-  let responseData: { status: true; flightType: string; legs: unknown[] };
-  try {
-    const { fltSchedule, fareDetails } = resultData;
-    const airlineNames: Record<string, string> = fltSchedule.airlineNames ?? {};
-    const cityNames: Record<string, string> = fltSchedule.cityNames ?? {};
+  const { fltSchedule, fareDetails } = resultData;
+  const airlineNames: Record<string, string> = fltSchedule.airlineNames ?? {};
+  const cityNames: Record<string, string> = fltSchedule.cityNames ?? {};
 
-    // Yatra doesn't guarantee fltSchedule's keys come back in requested-segment order,
-    // so match each requested segment to its route key explicitly instead of trusting
-    // object key order (otherwise outbound/return can end up swapped in the response).
-    const allRouteKeys = Object.keys(fltSchedule).filter(k => !NON_ROUTE_KEYS.has(k));
-    const orderedRouteKeys: string[] = [];
-    for (let i = 0; i < origin.length; i++) {
-      const expectedKey = `${origin[i] ?? ""}${destination[i] ?? ""}${ddmmyyyyToYyyymmdd(departures[i] ?? "")}`;
-      const match = allRouteKeys.find(k => k === expectedKey);
-      if (match && !orderedRouteKeys.includes(match)) orderedRouteKeys.push(match);
-    }
-    allRouteKeys.forEach(k => { if (!orderedRouteKeys.includes(k)) orderedRouteKeys.push(k); });
-
-    const scid: string = fltSchedule.scid ?? "";
-
-    // International responses have been observed to carry extra top-level metadata keys
-    // (beyond the known NON_ROUTE_KEYS set) that aren't route data — skip anything that
-    // isn't actually an array of flight options instead of crashing inside transformRoute.
-    const legs = orderedRouteKeys
-      .filter(routeKey => Array.isArray(fltSchedule[routeKey]))
-      .map(routeKey => ({
-        routeKey,
-        flights: transformRoute(
-          fltSchedule[routeKey],
-          fareDetails?.[routeKey] ?? {},
-          airlineNames,
-          cityNames,
-          scid,
-        ),
-      }));
-
-    responseData = { status: true, flightType, legs };
-  } catch (err) {
-    // Whatever shape this response has, it broke an assumption transformRoute() makes
-    // (built against domestic responses) — log the raw payload so the actual mismatch is
-    // visible in the server logs instead of the client just seeing a bare 500.
-    console.error(
-      `[flightSearch] Failed to parse ${flightType} response for ${origin.join(",")}->${destination.join(",")}:`,
-      err,
-      JSON.stringify(resultData).slice(0, 4000)
-    );
-    return {
-      status: false,
-      flightType,
-      msg: "We couldn't process the airline's response for this route. Please try again shortly.",
-      legs: [],
-    };
+  // Yatra doesn't guarantee fltSchedule's keys come back in requested-segment order,
+  // so match each requested segment to its route key explicitly instead of trusting
+  // object key order (otherwise outbound/return can end up swapped in the response).
+  const allRouteKeys = Object.keys(fltSchedule).filter(k => !NON_ROUTE_KEYS.has(k));
+  const orderedRouteKeys: string[] = [];
+  for (let i = 0; i < origin.length; i++) {
+    const expectedKey = `${origin[i] ?? ""}${destination[i] ?? ""}${ddmmyyyyToYyyymmdd(departures[i] ?? "")}`;
+    const match = allRouteKeys.find(k => k === expectedKey);
+    if (match && !orderedRouteKeys.includes(match)) orderedRouteKeys.push(match);
   }
+  allRouteKeys.forEach(k => { if (!orderedRouteKeys.includes(k)) orderedRouteKeys.push(k); });
+
+  const scid: string = fltSchedule.scid ?? "";
+
+  const legs = orderedRouteKeys.map(routeKey => ({
+    routeKey,
+    flights: transformRoute(
+      fltSchedule[routeKey],
+      fareDetails?.[routeKey] ?? {},
+      airlineNames,
+      cityNames,
+      scid,
+    ),
+  }));
+
+  const responseData = { status: true, flightType, legs };
 
   const cache = searchCache();
   if (cache.size >= SEARCH_CACHE_MAX_ENTRIES) {

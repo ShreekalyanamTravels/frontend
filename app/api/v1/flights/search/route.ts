@@ -59,29 +59,21 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ status: false, msg: "arrivalDate is required" }, { status: 422 });
   }
 
-  try {
-    const responseData = await searchFlights({
-      type: q.type,
-      noSegments: q.no_segments,
-      travelers: q["travelers[]"],
-      adults: q.adults,
-      childs: q.childs,
-      infants: q.infants,
-      cabinClass: q.class,
-      departures: q["departure[]"],
-      originCountries: q["origin_country[]"],
-      destinationCountries: q["destination_country[]"],
-      fromCities: q["from_city[]"],
-      toCities: q["to_city[]"],
-      fareType: q.fare_type ?? "1",
-    });
+  const responseData = await searchFlights({
+    type: q.type,
+    noSegments: q.no_segments,
+    travelers: q["travelers[]"],
+    adults: q.adults,
+    childs: q.childs,
+    infants: q.infants,
+    cabinClass: q.class,
+    departures: q["departure[]"],
+    originCountries: q["origin_country[]"],
+    destinationCountries: q["destination_country[]"],
+    fromCities: q["from_city[]"],
+    toCities: q["to_city[]"],
+    fareType: q.fare_type ?? "1",
+  });
 
-    return NextResponse.json(responseData);
-  } catch (err) {
-    console.error("[GET /api/v1/flights/search] Unhandled error:", err);
-    return NextResponse.json(
-      { status: false, msg: "Flight search is temporarily unavailable. Please try again.", legs: [] },
-      { status: 500 }
-    );
-  }
+  return NextResponse.json(responseData);
 }
