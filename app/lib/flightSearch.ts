@@ -321,6 +321,15 @@ export async function searchFlights(input: FlightSearchInput) {
       }));
 
     responseData = { status: true, flightType, legs };
+    // TEMPORARY diagnostic — remove once the international response shape is confirmed.
+    if (legs.length === 0) {
+      (responseData as Record<string, unknown>)._debug = {
+        allRouteKeys,
+        orderedRouteKeys,
+        keyTypes: Object.fromEntries(Object.keys(fltSchedule).map(k => [k, Array.isArray(fltSchedule[k]) ? "array" : typeof fltSchedule[k]])),
+        sample: orderedRouteKeys[0] ? JSON.stringify(fltSchedule[orderedRouteKeys[0]]).slice(0, 1500) : null,
+      };
+    }
   } catch (err) {
     // Whatever shape this response has, it broke an assumption transformRoute() makes
     // (built against domestic responses) — log the raw payload so the actual mismatch is
