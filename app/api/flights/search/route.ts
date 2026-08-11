@@ -39,10 +39,18 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const responseData = await searchFlights({
-    type: type!, noSegments: noSegments!, travelers, adults: adults!, childs: childs!, infants: infants!,
-    cabinClass: cabinClass!, departures, originCountries, destinationCountries, fromCities, toCities, fareType,
-  });
+  try {
+    const responseData = await searchFlights({
+      type: type!, noSegments: noSegments!, travelers, adults: adults!, childs: childs!, infants: infants!,
+      cabinClass: cabinClass!, departures, originCountries, destinationCountries, fromCities, toCities, fareType,
+    });
 
-  return NextResponse.json(responseData);
+    return NextResponse.json(responseData);
+  } catch (err) {
+    console.error("[GET /api/flights/search] Unhandled error:", err);
+    return NextResponse.json(
+      { status: false, msg: "Flight search is temporarily unavailable. Please try again.", legs: [] },
+      { status: 500 }
+    );
+  }
 }
