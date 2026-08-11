@@ -37,6 +37,16 @@ const NON_ROUTE_KEYS = new Set([
   "scid", "airlineNames", "taxLabel", "cityNames", "airportNames", "message", "fareType",
 ]);
 
+// Domestic responses key each route's flight options as a plain array. International responses
+// key them as an object keyed by the option's own ID instead ({[optionId]: YatraFlightOption}) —
+// confirmed directly against the live b2bint API. Normalize both into a flat array so
+// transformRoute() doesn't care which shape it got.
+function routeOptionsOf(raw: unknown): YatraFlightOption[] {
+  if (Array.isArray(raw)) return raw;
+  if (raw && typeof raw === "object") return Object.values(raw as Record<string, YatraFlightOption>);
+  return [];
+}
+
 const AIRLINE_COLORS: Record<string, string> = {
   AI: "#c8102e", "6E": "#1a237e", SG: "#e53935", UK: "#5c2d8c",
   G8: "#f7941d", I5: "#e4002b", "9I": "#0a5c36",
@@ -77,12 +87,18 @@ function transformRoute(
   cityNames: Record<string, string>,
   scid: string,
 ) {
+  // Defends against entries with no OD/segments at all (seen in some international responses) —
+  // segmentSignature() would otherwise throw on opt.OD[0].FS.
+  const validOptions = options.filter(
+    opt => Array.isArray(opt?.OD) && opt.OD[0] && Array.isArray(opt.OD[0].FS) && opt.OD[0].FS.length > 0
+  );
+
   // Multiple entries can represent the SAME physical flight (identical flight
   // numbers/times) with different fare bundles (Value, Flex, SME Fare, ...).
   // Group those together so the UI can show one card with a fare picker,
   // instead of one card per fare variant.
   const groups = new Map<string, YatraFlightOption[]>();
-  for (const opt of options) {
+  for (const opt of validOptions) {
     const sig = segmentSignature(opt);
     if (!groups.has(sig)) groups.set(sig, []);
     groups.get(sig)!.push(opt);
@@ -289,16 +305,20 @@ export async function searchFlights(input: FlightSearchInput) {
 
   const scid: string = fltSchedule.scid ?? "";
 
-  const legs = orderedRouteKeys.map(routeKey => ({
-    routeKey,
-    flights: transformRoute(
-      fltSchedule[routeKey],
-      fareDetails?.[routeKey] ?? {},
-      airlineNames,
-      cityNames,
-      scid,
-    ),
-  }));
+  // routeOptionsOf() normalizes both the domestic array shape and the international
+  // {[optionId]: option} object shape into a flat array before transformRoute sees it.
+  const legs = orderedRouteKeys
+    .map(routeKey => ({
+      routeKey,
+      flights: transformRoute(
+        routeOptionsOf(fltSchedule[routeKey]),
+        fareDetails?.[routeKey] ?? {},
+        airlineNames,
+        cityNames,
+        scid,
+      ),
+    }))
+    .filter(leg => leg.flights.length > 0);
 
   const responseData = { status: true, flightType, legs };
 
