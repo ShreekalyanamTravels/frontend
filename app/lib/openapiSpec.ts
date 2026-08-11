@@ -67,6 +67,7 @@ export const openApiSpec = {
     { name: "Payments" },
     { name: "Wallet" },
     { name: "GST & Fees" },
+    { name: "Vendor" },
   ],
   paths: {
     "/auth/login": {
@@ -526,6 +527,42 @@ export const openApiSpec = {
           { name: "amount", in: "query", required: true, schema: { type: "number" } },
         ],
         responses: { "200": { description: "Service fee" }, "400": errorRef("Missing params") },
+      },
+    },
+    "/vendor/register": {
+      post: {
+        tags: ["Vendor"], summary: "Register a new vendor account", security: [],
+        description:
+          "Public registration endpoint restricted to requests from https://vendor.shreekalyanam.com " +
+          "(checked via the Origin header — other origins get 403). New accounts are created with " +
+          "status=Inactive and require admin approval before they can log in.",
+        requestBody: jsonBody({
+          type: "object",
+          required: ["firstName", "lastName", "email", "password", "mobile"],
+          properties: {
+            firstName: { type: "string", maxLength: 100, example: "Ravi" },
+            lastName: { type: "string", maxLength: 100, example: "Kumar" },
+            email: { type: "string", format: "email", example: "ravi@vendorco.com" },
+            password: { type: "string", minLength: 8, example: "correcthorsebattery" },
+            mobile: { type: "string", example: "9876543210" },
+            companyName: { type: "string", maxLength: 255, example: "Vendor Co Pvt Ltd" },
+            gstNumber: { type: "string", maxLength: 50, example: "27AAAPL1234C1ZV" },
+            panNumber: { type: "string", maxLength: 20, example: "AAAPL1234C" },
+            address: { type: "string", maxLength: 500, example: "12 MG Road" },
+            state: { type: "string", maxLength: 100, example: "Maharashtra" },
+            pincode: { type: "string", maxLength: 10, example: "400001" },
+          },
+        }),
+        responses: {
+          "201": {
+            description: "Account created",
+            content: { "application/json": { schema: { type: "object", properties: { id: { type: "integer" }, status: { type: "string", example: "Inactive" } } } } },
+          },
+          "400": errorRef("Invalid request body"),
+          "403": errorRef("Forbidden origin"),
+          "409": errorRef("An account with this email already exists"),
+          "429": errorRef("Too many requests"),
+        },
       },
     },
   },
