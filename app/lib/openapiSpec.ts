@@ -556,7 +556,19 @@ export const openApiSpec = {
         responses: {
           "201": {
             description: "Account created",
-            content: { "application/json": { schema: { type: "object", properties: { id: { type: "integer" }, status: { type: "string", example: "Inactive" } } } } },
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    success: { type: "boolean", example: true },
+                    message: { type: "string", example: "Registration successful. Your account is pending admin approval." },
+                    id: { type: "integer" },
+                    status: { type: "string", example: "Inactive" },
+                  },
+                },
+              },
+            },
           },
           "400": errorRef("Invalid request body"),
           "403": errorRef("Forbidden origin"),

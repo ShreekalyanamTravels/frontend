@@ -103,7 +103,12 @@ export async function POST(request: Request) {
       ]
     );
     return NextResponse.json(
-      { id: result.insertId, status: NEW_ACCOUNT_STATUS },
+      {
+        success: true,
+        message: "Registration successful. Your account is pending admin approval.",
+        id: result.insertId,
+        status: NEW_ACCOUNT_STATUS,
+      },
       { status: 201, headers }
     );
   } catch (err) {
