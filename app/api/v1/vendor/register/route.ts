@@ -89,15 +89,16 @@ export async function POST(request: Request) {
   }
 
   const passwordHash = await bcrypt.hash(f.password, 10);
+  const fullName = `${f.firstName} ${f.lastName}`;
 
   try {
     const [result] = await pool.query<ResultSetHeader>(
       `INSERT INTO users
-        (first_name, last_name, email, password, mobile, type, status,
+        (name, first_name, last_name, email, password, mobile, type, status,
          c_name, c_gst, c_pan, c_address, c_state, c_pincode)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        f.firstName, f.lastName, f.email, passwordHash, f.mobile, NEW_ACCOUNT_TYPE, NEW_ACCOUNT_STATUS,
+        fullName, f.firstName, f.lastName, f.email, passwordHash, f.mobile, NEW_ACCOUNT_TYPE, NEW_ACCOUNT_STATUS,
         f.companyName ?? null, f.gstNumber ?? null, f.panNumber ?? null,
         f.address ?? null, f.state ?? null, f.pincode ?? null,
       ]
