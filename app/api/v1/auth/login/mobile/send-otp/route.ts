@@ -43,9 +43,14 @@ export async function POST(request: Request) {
   // endpoint can't be used to enumerate which mobile numbers have an account.
   if (user && user.status === "Active") {
     const otp = generateOtp();
+    // Computed in JS rather than via SQL NOW() + INTERVAL — the DB server's clock was found to be
+    // several hours off from real time, which made every OTP look already-expired the moment
+    // verify-otp compared it against Date.now(). Writing an absolute JS-computed timestamp instead
+    // makes expiry independent of the DB server's clock being correct.
+    const expiresAt = new Date(Date.now() + OTP_TTL_MINUTES * 60_000);
     await pool.query(
-      `UPDATE users SET mobile_otp = ?, mobile_otp_expires_at = NOW() + INTERVAL ${OTP_TTL_MINUTES} MINUTE WHERE id = ?`,
-      [otp, user.id]
+      "UPDATE users SET mobile_otp = ?, mobile_otp_expires_at = ? WHERE id = ?",
+      [otp, expiresAt, user.id]
     );
     try {
       await sendOtpSms(mobile, otp);
