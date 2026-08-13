@@ -11,6 +11,7 @@ const MOBILE_RE = /^[6-9]\d{9}$/;
 const bodySchema = z.object({
   mobile: z.string().trim().regex(MOBILE_RE, "Enter a valid 10-digit mobile number"),
   otp: z.string().trim().regex(/^\d{6}$/, "Enter the 6-digit OTP"),
+  deviceId: z.string().max(255).optional(),
 });
 
 interface UserRow extends RowDataPacket {
@@ -31,7 +32,7 @@ export async function POST(request: Request) {
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Invalid request body" }, { status: 400 });
   }
-  const { mobile, otp } = parsed.data;
+  const { mobile, otp, deviceId } = parsed.data;
 
   // 6-digit OTP is only 1M combinations — throttle guessing separately from the send limiter.
   const { allowed } = rateLimit(`mobile-otp-verify:${clientIp(request)}:${mobile}`, 5, 10 * 60_000);
@@ -52,6 +53,14 @@ export async function POST(request: Request) {
 
   // Single-use: clear it immediately so the same OTP can't be replayed.
   await pool.query("UPDATE users SET mobile_otp = NULL, mobile_otp_expires_at = NULL WHERE id = ?", [user.id]);
+
+  if (deviceId) {
+    // Best-effort — must never block login itself, including if db/migrations/2026_08_users_device_id.sql
+    // hasn't been run against this database yet (missing column would otherwise fail every login).
+    await pool.query("UPDATE users SET device_id = ? WHERE id = ?", [deviceId, user.id]).catch(err => {
+      console.error("Failed to record device_id on login:", err);
+    });
+  }
 
   const name = [user.first_name, user.last_name].filter(Boolean).join(" ");
   const corporateId = String(user.id);
