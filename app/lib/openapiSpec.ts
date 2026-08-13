@@ -145,6 +145,34 @@ export const openApiSpec = {
         responses: { "200": { description: "OK" }, "400": errorRef("Invalid or expired reset link"), "429": errorRef("Too many requests") },
       },
     },
+    "/auth/login/mobile/send-otp": {
+      post: {
+        tags: ["Auth"], summary: "Send a login OTP by SMS to a registered mobile number", security: [],
+        description:
+          "Always returns the same generic message whether or not the mobile number has an account, " +
+          "so this can't be used to enumerate registered numbers. OTP is valid for 10 minutes.",
+        requestBody: jsonBody({ type: "object", required: ["mobile"], properties: { mobile: { type: "string", example: "9876543210", description: "10-digit Indian mobile number" } } }),
+        responses: {
+          "200": { description: "Generic confirmation (sent, or silently no-op if unregistered)" },
+          "400": errorRef("Enter a valid 10-digit mobile number"),
+          "429": errorRef("Too many OTP requests"),
+        },
+      },
+    },
+    "/auth/login/mobile/verify-otp": {
+      post: {
+        tags: ["Auth"], summary: "Verify a login OTP and log in", security: [],
+        requestBody: jsonBody({
+          type: "object", required: ["mobile", "otp"],
+          properties: { mobile: { type: "string", example: "9876543210" }, otp: { type: "string", example: "482913" } },
+        }),
+        responses: {
+          "200": { description: "Logged in", content: { "application/json": { schema: { $ref: "#/components/schemas/TokenPair" } } } },
+          "400": errorRef("Invalid or expired OTP"),
+          "429": errorRef("Too many attempts"),
+        },
+      },
+    },
 
     "/profile": {
       get: {

@@ -56,6 +56,63 @@ export default function Home() {
   const [recaptchaToken, setRecaptchaToken] = useState<string | null>(null);
   const recaptchaRef = useRef<ReCAPTCHA>(null);
 
+  const [loginMethod, setLoginMethod] = useState<'email'|'mobile'>('email');
+  const [mobile,   setMobile]   = useState('');
+  const [otp,      setOtp]      = useState('');
+  const [otpSent,  setOtpSent]  = useState(false);
+
+  async function handleSendOtp() {
+    setError('');
+    if (!/^[6-9]\d{9}$/.test(mobile)) {
+      setError('Please enter a valid 10-digit mobile number.');
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await fetch('/api/auth/login/mobile/send-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mobile }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error ?? 'Something went wrong. Please try again.');
+        return;
+      }
+      setOtpSent(true);
+    } catch {
+      setError('Something went wrong. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleVerifyOtp() {
+    setError('');
+    if (!/^\d{6}$/.test(otp)) {
+      setError('Please enter the 6-digit OTP.');
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await fetch('/api/auth/login/mobile/verify-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mobile, otp }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error ?? 'Invalid or expired OTP');
+        return;
+      }
+      router.push('/corporate/dashboard');
+    } catch {
+      setError('Something went wrong. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function handleSignIn() {
     setError('');
     if (!email || !password) {
@@ -156,80 +213,158 @@ export default function Home() {
             borderTop: '3px solid #c9184a',
           }}>
             <h2 style={{ fontSize: 24, fontWeight: 700, color: '#1a1a2e', margin: '0 0 6px', fontFamily: 'inherit' }}>Sign in</h2>
-            <p style={{ fontSize: 13, color: '#9a9a9a', margin: '0 0 26px' }}>Access your corporate travel dashboard</p>
+            <p style={{ fontSize: 13, color: '#9a9a9a', margin: '0 0 18px' }}>Access your corporate travel dashboard</p>
 
-            {/* Email */}
-            <div style={{ marginBottom: 18 }}>
-              <label style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.1em', textTransform: 'uppercase', color: '#7a7a7a', display: 'block', marginBottom: 7 }}>
-                EMAIL ID
-              </label>
-              <input
-                type="email" value={email} placeholder="Enter your email"
-                onChange={e => setEmail(e.target.value)}
-                style={{ ...inputBase, background: '#f0f4fb', borderColor: '#d8e4f4' }}
-              />
-            </div>
-
-            {/* Password */}
-            <div style={{ marginBottom: 14 }}>
-              <label style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.1em', textTransform: 'uppercase', color: '#7a7a7a', display: 'block', marginBottom: 7 }}>
-                PASSWORD
-              </label>
-              <div style={{ position: 'relative' }}>
-                <input
-                  type={showPw ? 'text' : 'password'} value={password} placeholder="Enter password"
-                  onChange={e => setPassword(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter') handleSignIn(); }}
-                  style={{ ...inputBase, paddingRight: 42, background: '#fafafa', borderColor: '#e8e8e8' }}
-                />
-                <button onClick={() => setShowPw(p => !p)} style={{
-                  position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)',
-                  background: 'none', border: 'none', cursor: 'pointer', color: '#9a9a9a', fontSize: 15, padding: 0, lineHeight: 1,
-                }}>
-                  {showPw ? '🙈' : '👁'}
+            {/* Email / Mobile toggle */}
+            <div style={{ display: 'flex', gap: 6, background: '#f2f2f2', borderRadius: 9, padding: 4, marginBottom: 20 }}>
+              {(['email','mobile'] as const).map(m => (
+                <button key={m} onClick={() => { setLoginMethod(m); setError(''); }}
+                  style={{
+                    flex: 1, padding: '8px 0', borderRadius: 6, border: 'none', cursor: 'pointer',
+                    fontSize: 12.5, fontWeight: 700, letterSpacing: '.02em', fontFamily: 'inherit',
+                    background: loginMethod === m ? '#fff' : 'transparent',
+                    color: loginMethod === m ? '#8b1a1a' : '#888',
+                    boxShadow: loginMethod === m ? '0 1px 4px rgba(0,0,0,.1)' : 'none',
+                  }}>
+                  {m === 'email' ? 'Email' : 'Mobile'}
                 </button>
-              </div>
+              ))}
             </div>
 
-            {/* reCAPTCHA — disabled until the site key supports this domain */}
-            {RECAPTCHA_ENABLED && (
-              <div style={{ marginBottom: 16, transform: 'scale(0.92)', transformOrigin: 'left' }}>
-                <ReCAPTCHA
-                  ref={recaptchaRef}
-                  sitekey={process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY!}
-                  onChange={token => setRecaptchaToken(token)}
-                  onExpired={() => setRecaptchaToken(null)}
-                />
-              </div>
+            {loginMethod === 'email' ? (
+              <>
+                {/* Email */}
+                <div style={{ marginBottom: 18 }}>
+                  <label style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.1em', textTransform: 'uppercase', color: '#7a7a7a', display: 'block', marginBottom: 7 }}>
+                    EMAIL ID
+                  </label>
+                  <input
+                    type="email" value={email} placeholder="Enter your email"
+                    onChange={e => setEmail(e.target.value)}
+                    style={{ ...inputBase, background: '#f0f4fb', borderColor: '#d8e4f4' }}
+                  />
+                </div>
+
+                {/* Password */}
+                <div style={{ marginBottom: 14 }}>
+                  <label style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.1em', textTransform: 'uppercase', color: '#7a7a7a', display: 'block', marginBottom: 7 }}>
+                    PASSWORD
+                  </label>
+                  <div style={{ position: 'relative' }}>
+                    <input
+                      type={showPw ? 'text' : 'password'} value={password} placeholder="Enter password"
+                      onChange={e => setPassword(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') handleSignIn(); }}
+                      style={{ ...inputBase, paddingRight: 42, background: '#fafafa', borderColor: '#e8e8e8' }}
+                    />
+                    <button onClick={() => setShowPw(p => !p)} style={{
+                      position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)',
+                      background: 'none', border: 'none', cursor: 'pointer', color: '#9a9a9a', fontSize: 15, padding: 0, lineHeight: 1,
+                    }}>
+                      {showPw ? '🙈' : '👁'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* reCAPTCHA — disabled until the site key supports this domain */}
+                {RECAPTCHA_ENABLED && (
+                  <div style={{ marginBottom: 16, transform: 'scale(0.92)', transformOrigin: 'left' }}>
+                    <ReCAPTCHA
+                      ref={recaptchaRef}
+                      sitekey={process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY!}
+                      onChange={token => setRecaptchaToken(token)}
+                      onExpired={() => setRecaptchaToken(null)}
+                    />
+                  </div>
+                )}
+
+                {/* Forgot */}
+                <div style={{ textAlign: 'right', marginBottom: 20 }}>
+                  <Link href="/forgot-password" style={{ fontSize: 12.5, color: '#c9184a', fontWeight: 500, textDecoration: 'none' }}>
+                    Forgot Password?
+                  </Link>
+                </div>
+
+                {error && (
+                  <div style={{ fontSize: 12.5, color: '#c9184a', background: '#fdeef1', border: '1px solid #f3c6d0', borderRadius: 8, padding: '9px 12px', marginBottom: 16 }}>
+                    {error}
+                  </div>
+                )}
+
+                {/* Submit */}
+                <button
+                  onClick={handleSignIn}
+                  disabled={loading}
+                  style={{
+                    width: '100%', padding: '13px',
+                    background: '#8b1a1a', color: '#fff', border: 'none',
+                    borderRadius: 10, fontSize: 15, fontWeight: 700,
+                    cursor: loading ? 'default' : 'pointer', fontFamily: 'inherit', letterSpacing: '.02em',
+                    opacity: loading ? 0.7 : 1,
+                  }}
+                >
+                  {loading ? 'Signing in…' : 'Sign In →'}
+                </button>
+              </>
+            ) : (
+              <>
+                {/* Mobile */}
+                <div style={{ marginBottom: 18 }}>
+                  <label style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.1em', textTransform: 'uppercase', color: '#7a7a7a', display: 'block', marginBottom: 7 }}>
+                    MOBILE NUMBER
+                  </label>
+                  <input
+                    type="tel" value={mobile} placeholder="10-digit mobile number" maxLength={10}
+                    disabled={otpSent}
+                    onChange={e => setMobile(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                    style={{ ...inputBase, background: '#f0f4fb', borderColor: '#d8e4f4', opacity: otpSent ? 0.6 : 1 }}
+                  />
+                </div>
+
+                {otpSent && (
+                  <div style={{ marginBottom: 14 }}>
+                    <label style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.1em', textTransform: 'uppercase', color: '#7a7a7a', display: 'block', marginBottom: 7 }}>
+                      ENTER OTP
+                    </label>
+                    <input
+                      type="text" inputMode="numeric" value={otp} placeholder="6-digit OTP" maxLength={6}
+                      onChange={e => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                      onKeyDown={e => { if (e.key === 'Enter') handleVerifyOtp(); }}
+                      style={{ ...inputBase, background: '#fafafa', borderColor: '#e8e8e8' }}
+                    />
+                  </div>
+                )}
+
+                {error && (
+                  <div style={{ fontSize: 12.5, color: '#c9184a', background: '#fdeef1', border: '1px solid #f3c6d0', borderRadius: 8, padding: '9px 12px', marginBottom: 16 }}>
+                    {error}
+                  </div>
+                )}
+
+                {otpSent && (
+                  <div style={{ textAlign: 'right', marginBottom: 20 }}>
+                    <button onClick={() => { setOtpSent(false); setOtp(''); setError(''); }}
+                      style={{ background: 'none', border: 'none', fontSize: 12.5, color: '#c9184a', fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}>
+                      Change Number
+                    </button>
+                  </div>
+                )}
+
+                <button
+                  onClick={otpSent ? handleVerifyOtp : handleSendOtp}
+                  disabled={loading}
+                  style={{
+                    width: '100%', padding: '13px',
+                    background: '#8b1a1a', color: '#fff', border: 'none',
+                    borderRadius: 10, fontSize: 15, fontWeight: 700,
+                    cursor: loading ? 'default' : 'pointer', fontFamily: 'inherit', letterSpacing: '.02em',
+                    opacity: loading ? 0.7 : 1, marginTop: otpSent ? 0 : 6,
+                  }}
+                >
+                  {loading ? (otpSent ? 'Verifying…' : 'Sending OTP…') : (otpSent ? 'Verify & Sign In →' : 'Send OTP')}
+                </button>
+              </>
             )}
-
-            {/* Forgot */}
-            <div style={{ textAlign: 'right', marginBottom: 20 }}>
-              <Link href="/forgot-password" style={{ fontSize: 12.5, color: '#c9184a', fontWeight: 500, textDecoration: 'none' }}>
-                Forgot Password?
-              </Link>
-            </div>
-
-            {error && (
-              <div style={{ fontSize: 12.5, color: '#c9184a', background: '#fdeef1', border: '1px solid #f3c6d0', borderRadius: 8, padding: '9px 12px', marginBottom: 16 }}>
-                {error}
-              </div>
-            )}
-
-            {/* Submit */}
-            <button
-              onClick={handleSignIn}
-              disabled={loading}
-              style={{
-                width: '100%', padding: '13px',
-                background: '#8b1a1a', color: '#fff', border: 'none',
-                borderRadius: 10, fontSize: 15, fontWeight: 700,
-                cursor: loading ? 'default' : 'pointer', fontFamily: 'inherit', letterSpacing: '.02em',
-                opacity: loading ? 0.7 : 1,
-              }}
-            >
-              {loading ? 'Signing in…' : 'Sign In →'}
-            </button>
           </div>
         </div>
       </section>

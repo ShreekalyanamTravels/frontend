@@ -47,6 +47,63 @@ export default function CorporateLoginPage() {
   const [recaptchaToken, setRecaptchaToken] = useState<string | null>(null);
   const recaptchaRef = useRef<ReCAPTCHA>(null);
 
+  const [loginMethod, setLoginMethod] = useState<'email'|'mobile'>('email');
+  const [mobile,   setMobile]   = useState('');
+  const [otp,      setOtp]      = useState('');
+  const [otpSent,  setOtpSent]  = useState(false);
+
+  async function handleSendOtp() {
+    setError('');
+    if (!/^[6-9]\d{9}$/.test(mobile)) {
+      setError('Please enter a valid 10-digit mobile number.');
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await fetch('/api/auth/login/mobile/send-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mobile }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error ?? 'Something went wrong. Please try again.');
+        return;
+      }
+      setOtpSent(true);
+    } catch {
+      setError('Something went wrong. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleVerifyOtp() {
+    setError('');
+    if (!/^\d{6}$/.test(otp)) {
+      setError('Please enter the 6-digit OTP.');
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await fetch('/api/auth/login/mobile/verify-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mobile, otp }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error ?? 'Invalid or expired OTP');
+        return;
+      }
+      router.push('/corporate/dashboard');
+    } catch {
+      setError('Something went wrong. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function handleSignIn() {
     setError('');
     if (!email || !password) {
@@ -156,62 +213,124 @@ export default function CorporateLoginPage() {
               {tab === 'login' ? (
                 <>
                   <h2 style={{ fontSize:24, fontWeight:700, color:'#1a1a2e', marginBottom:4 }}>Sign in</h2>
-                  <p style={{ fontSize:13, color:'#999', marginBottom:22 }}>Access your corporate travel dashboard</p>
+                  <p style={{ fontSize:13, color:'#999', marginBottom:18 }}>Access your corporate travel dashboard</p>
 
-                  <div style={{ display:'flex', flexDirection:'column', gap:15 }}>
-                    <div>
-                      <label style={lbl}>Email ID</label>
-                      <input type="email" placeholder="you@company.com" value={email}
-                        onChange={e => setEmail(e.target.value)} style={inp} />
-                    </div>
-                    <div>
-                      <label style={lbl}>Password</label>
-                      <div style={{ position:'relative' }}>
-                        <input type={showPass ? 'text' : 'password'} placeholder="••••••••"
-                          value={password} onChange={e => setPassword(e.target.value)}
-                          style={{ ...inp, paddingRight:42 }} />
-                        <button onClick={() => setShowPass(v => !v)}
-                          style={{ position:'absolute', right:12, top:'50%', transform:'translateY(-50%)',
-                            background:'none', border:'none', cursor:'pointer', fontSize:15, color:'#bbb', lineHeight:1 }}>
-                          {showPass ? '🙈' : '👁'}
+                  {/* Email / Mobile toggle */}
+                  <div style={{ display:'flex', gap:6, background:'#f2f2f2', borderRadius:9, padding:4, marginBottom:20 }}>
+                    {(['email','mobile'] as const).map(m => (
+                      <button key={m} onClick={() => { setLoginMethod(m); setError(''); }}
+                        style={{
+                          flex:1, padding:'8px 0', borderRadius:6, border:'none', cursor:'pointer',
+                          fontSize:12.5, fontWeight:700, letterSpacing:'.02em',
+                          background: loginMethod === m ? '#fff' : 'transparent',
+                          color: loginMethod === m ? '#9b1535' : '#888',
+                          boxShadow: loginMethod === m ? '0 1px 4px rgba(0,0,0,.1)' : 'none',
+                        }}>
+                        {m === 'email' ? 'Email' : 'Mobile'}
+                      </button>
+                    ))}
+                  </div>
+
+                  {loginMethod === 'email' ? (
+                    <div style={{ display:'flex', flexDirection:'column', gap:15 }}>
+                      <div>
+                        <label style={lbl}>Email ID</label>
+                        <input type="email" placeholder="you@company.com" value={email}
+                          onChange={e => setEmail(e.target.value)} style={inp} />
+                      </div>
+                      <div>
+                        <label style={lbl}>Password</label>
+                        <div style={{ position:'relative' }}>
+                          <input type={showPass ? 'text' : 'password'} placeholder="••••••••"
+                            value={password} onChange={e => setPassword(e.target.value)}
+                            style={{ ...inp, paddingRight:42 }} />
+                          <button onClick={() => setShowPass(v => !v)}
+                            style={{ position:'absolute', right:12, top:'50%', transform:'translateY(-50%)',
+                              background:'none', border:'none', cursor:'pointer', fontSize:15, color:'#bbb', lineHeight:1 }}>
+                            {showPass ? '🙈' : '👁'}
+                          </button>
+                        </div>
+                      </div>
+
+                      {RECAPTCHA_ENABLED && (
+                        <div style={{ transform:'scale(0.92)', transformOrigin:'left' }}>
+                          <ReCAPTCHA
+                            ref={recaptchaRef}
+                            sitekey={process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY!}
+                            onChange={token => setRecaptchaToken(token)}
+                            onExpired={() => setRecaptchaToken(null)}
+                          />
+                        </div>
+                      )}
+
+                      {error && (
+                        <div style={{ fontSize:12.5, color:'#c9184a', background:'#fdeef1',
+                          border:'1px solid #f3c6d0', borderRadius:8, padding:'9px 12px' }}>
+                          {error}
+                        </div>
+                      )}
+
+                      <div style={{ textAlign:'right', marginTop:-6 }}>
+                        <button onClick={() => setTab('reset')}
+                          style={{ background:'none', border:'none', fontSize:12.5, color:'#c9184a',
+                            cursor:'pointer', fontWeight:500 }}>
+                          Forgot Password?
                         </button>
                       </div>
-                    </div>
 
-                    {RECAPTCHA_ENABLED && (
-                      <div style={{ transform:'scale(0.92)', transformOrigin:'left' }}>
-                        <ReCAPTCHA
-                          ref={recaptchaRef}
-                          sitekey={process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY!}
-                          onChange={token => setRecaptchaToken(token)}
-                          onExpired={() => setRecaptchaToken(null)}
-                        />
-                      </div>
-                    )}
-
-                    {error && (
-                      <div style={{ fontSize:12.5, color:'#c9184a', background:'#fdeef1',
-                        border:'1px solid #f3c6d0', borderRadius:8, padding:'9px 12px' }}>
-                        {error}
-                      </div>
-                    )}
-
-                    <div style={{ textAlign:'right', marginTop:-6 }}>
-                      <button onClick={() => setTab('reset')}
-                        style={{ background:'none', border:'none', fontSize:12.5, color:'#c9184a',
-                          cursor:'pointer', fontWeight:500 }}>
-                        Forgot Password?
+                      <button onClick={handleSignIn} disabled={loading}
+                        style={{ width:'100%', padding:'13px', background:'#9b1535', color:'#fff',
+                        border:'none', borderRadius:9, fontSize:14.5, fontWeight:700,
+                        cursor: loading ? 'default' : 'pointer', opacity: loading ? 0.7 : 1,
+                        letterSpacing:'.02em' }}>
+                        {loading ? 'Signing in…' : 'Sign In →'}
                       </button>
                     </div>
+                  ) : (
+                    <div style={{ display:'flex', flexDirection:'column', gap:15 }}>
+                      <div>
+                        <label style={lbl}>Mobile Number</label>
+                        <input type="tel" placeholder="10-digit mobile number" value={mobile}
+                          disabled={otpSent} maxLength={10}
+                          onChange={e => setMobile(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                          style={{ ...inp, opacity: otpSent ? 0.6 : 1 }} />
+                      </div>
 
-                    <button onClick={handleSignIn} disabled={loading}
-                      style={{ width:'100%', padding:'13px', background:'#9b1535', color:'#fff',
-                      border:'none', borderRadius:9, fontSize:14.5, fontWeight:700,
-                      cursor: loading ? 'default' : 'pointer', opacity: loading ? 0.7 : 1,
-                      letterSpacing:'.02em' }}>
-                      {loading ? 'Signing in…' : 'Sign In →'}
-                    </button>
-                  </div>
+                      {otpSent && (
+                        <div>
+                          <label style={lbl}>Enter OTP</label>
+                          <input type="text" inputMode="numeric" placeholder="6-digit OTP" value={otp}
+                            maxLength={6} onChange={e => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                            style={inp} />
+                        </div>
+                      )}
+
+                      {error && (
+                        <div style={{ fontSize:12.5, color:'#c9184a', background:'#fdeef1',
+                          border:'1px solid #f3c6d0', borderRadius:8, padding:'9px 12px' }}>
+                          {error}
+                        </div>
+                      )}
+
+                      {otpSent && (
+                        <div style={{ textAlign:'right', marginTop:-6 }}>
+                          <button onClick={() => { setOtpSent(false); setOtp(''); setError(''); }}
+                            style={{ background:'none', border:'none', fontSize:12.5, color:'#c9184a',
+                              cursor:'pointer', fontWeight:500 }}>
+                            Change Number
+                          </button>
+                        </div>
+                      )}
+
+                      <button onClick={otpSent ? handleVerifyOtp : handleSendOtp} disabled={loading}
+                        style={{ width:'100%', padding:'13px', background:'#9b1535', color:'#fff',
+                        border:'none', borderRadius:9, fontSize:14.5, fontWeight:700,
+                        cursor: loading ? 'default' : 'pointer', opacity: loading ? 0.7 : 1,
+                        letterSpacing:'.02em' }}>
+                        {loading ? (otpSent ? 'Verifying…' : 'Sending OTP…') : (otpSent ? 'Verify & Sign In →' : 'Send OTP')}
+                      </button>
+                    </div>
+                  )}
                 </>
               ) : (
                 <>
