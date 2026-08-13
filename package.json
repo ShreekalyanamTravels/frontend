@@ -11,6 +11,7 @@
   "dependencies": {
     "@react-pdf/renderer": "^4.5.1",
     "bcryptjs": "^3.0.3",
+    "expo-server-sdk": "^7.1.0",
     "jose": "^6.2.3",
     "mysql2": "^3.22.6",
     "next": "16.2.9",
