@@ -50,11 +50,10 @@ function isDuplicateEmailError(err: unknown): boolean {
   return !!err && typeof err === "object" && "code" in err && (err as { code: string }).code === "ER_DUP_ENTRY";
 }
 
-// New vendor accounts land Inactive — same gate app/api/auth/login/route.ts already enforces
-// (`user.status !== "Active"` blocks login), so self-registered vendors can't sign in until an
-// admin approves them from the admin panel. type='Vendor' tags the account's origin/category,
-// mirroring how `type` is already surfaced elsewhere as `accountType` (see app/api/profile).
-const NEW_ACCOUNT_STATUS = "Inactive";
+// New vendor accounts land Active — self-registered vendors can sign in immediately, no admin
+// approval step. type='Vendor' tags the account's origin/category, mirroring how `type` is
+// already surfaced elsewhere as `accountType` (see app/api/profile).
+const NEW_ACCOUNT_STATUS = "Active";
 const NEW_ACCOUNT_TYPE = "Vendor";
 
 export async function POST(request: Request) {
@@ -106,7 +105,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         success: true,
-        message: "Registration successful. Your account is pending admin approval.",
+        message: "Registration successful. You can now log in.",
         id: result.insertId,
         status: NEW_ACCOUNT_STATUS,
       },

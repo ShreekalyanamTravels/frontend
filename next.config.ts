@@ -12,7 +12,8 @@ const CSP = [
   "img-src 'self' data: https:",
   "font-src 'self' data: https://fonts.gstatic.com",
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-  "script-src 'self' 'unsafe-inline' https://checkout.razorpay.com https://www.google.com https://www.gstatic.com " +
+  `script-src 'self' 'unsafe-inline' ${process.env.NODE_ENV !== "production" ? "'unsafe-eval' " : ""}` +
+    "https://checkout.razorpay.com https://www.google.com https://www.gstatic.com " +
     "https://www.googletagmanager.com https://www.google-analytics.com https://www.clarity.ms " +
     "https://connect.facebook.net",
   "connect-src 'self' https://api.razorpay.com https://lumberjack.razorpay.com " +

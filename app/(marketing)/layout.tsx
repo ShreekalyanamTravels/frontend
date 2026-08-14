@@ -1,8 +1,11 @@
 import Nav from '../components/Nav';
 import Footer from '../components/Footer';
 import { JsonLd, organizationJsonLd, websiteJsonLd } from '@/app/lib/jsonLd';
+import { getSystemSettingValue } from '@/app/lib/systemSettings';
 
-export default function MarketingLayout({ children }: { children: React.ReactNode }) {
+export default async function MarketingLayout({ children }: { children: React.ReactNode }) {
+  const companyName = (await getSystemSettingValue('company_name')) ?? undefined;
+
   return (
     <>
       {/* Site-wide schema for the public marketing site only — never emitted on the
@@ -11,7 +14,7 @@ export default function MarketingLayout({ children }: { children: React.ReactNod
       <JsonLd data={websiteJsonLd()} />
       <Nav />
       <main style={{ paddingTop: 64 }}>{children}</main>
-      <Footer />
+      <Footer companyName={companyName} />
     </>
   );
 }

@@ -380,13 +380,12 @@ export default function DashboardPage() {
   const { user, loading: userLoading } = useCurrentUser();
   const [activeTab, setActiveTab] = useState<'flights'|'insurance'>('flights');
   type ProductInfo = { status:'active'|'inactive'; availability:'live'|'coming_soon' };
-  const [productStatus, setProductStatus] = useState<Record<string, ProductInfo>>({
-    flight:    { status:'active', availability:'live' },
-    insurance: { status:'active', availability:'live' },
-    hotels:    { status:'active', availability:'coming_soon' },
-    travel:    { status:'active', availability:'coming_soon' },
-    visa:      { status:'active', availability:'coming_soon' },
-  });
+  // Starts empty rather than defaulting every product to 'active' — the tab filter below only
+  // shows a tab once its real status has come back from /api/products, so nothing renders that
+  // hasn't been confirmed active yet. Defaulting to all-active previously flashed every tab
+  // (including inactive ones like Hotels/Travel/Visa) for a moment before this effect corrected it.
+  const [productStatus, setProductStatus] = useState<Record<string, ProductInfo>>({});
+  const [productsLoading, setProductsLoading] = useState(true);
 
   useEffect(() => {
     fetch('/api/products')
@@ -397,7 +396,8 @@ export default function DashboardPage() {
           map[p.name.toLowerCase()] = { status: p.status, availability: p.availability };
         });
         setProductStatus(prev => ({ ...prev, ...map }));
-      });
+      })
+      .finally(() => setProductsLoading(false));
   }, []);
 
   useEffect(() => {
@@ -610,7 +610,18 @@ export default function DashboardPage() {
 
             {/* Service tabs — dynamic, driven by the `products` table status */}
             <div style={{ display:'flex', gap:10, marginBottom:26 }}>
-              {([
+              {productsLoading ? (
+                <>
+                  {[86, 108].map((w, i) => (
+                    <div key={i} style={{
+                      width:w, height:39, borderRadius:28,
+                      border:'1.5px solid #e8e8e8', background:'#f2f2f2',
+                      animation:'tabPulse 1.2s ease-in-out infinite',
+                    }} />
+                  ))}
+                  <style>{`@keyframes tabPulse{0%,100%{opacity:.6}50%{opacity:1}}`}</style>
+                </>
+              ) : ([
                 { key:'flight',    icon:'✈',   label:'Flights',   selectable:true,  tab:'flights' as const   },
                 { key:'insurance', icon:'🛡️', label:'Insurance', selectable:true,  tab:'insurance' as const },
                 { key:'hotels',    icon:'🏨',  label:'Hotels',    selectable:false, tab:null                 },

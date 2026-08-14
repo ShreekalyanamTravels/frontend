@@ -9,7 +9,7 @@ const FOOTER_LINKS = [
   { label: 'Contact Us',        href: '/contact'     },
 ];
 
-export default function Footer() {
+export default function Footer({ companyName = 'Shree Kalyanam' }: { companyName?: string }) {
   return (
     <footer style={{
       background: '#111', padding: '20px 6%',
@@ -17,7 +17,7 @@ export default function Footer() {
       flexWrap: 'wrap', gap: 12,
     }}>
       <span style={{ fontSize: 12, color: '#7a7a7a' }}>
-        © 2026 Shree Kalyanam. All rights reserved.
+        © {new Date().getFullYear()} {companyName}. All rights reserved.
       </span>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
         {FOOTER_LINKS.map((l, i) => (

@@ -1,6 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useCompanyName } from './CompanyNameContext';
 
 const FOOTER_LINKS = [
   { label:'About Us',           href:'/corporate/about'      },
@@ -17,6 +18,8 @@ const PARTNERS = [
 
 export default function CorpFooter({ ticker = false }: { ticker?: boolean }) {
   const path = usePathname();
+  const companyName = useCompanyName();
+
   return (
     <>
       {ticker && (
@@ -38,7 +41,7 @@ export default function CorpFooter({ ticker = false }: { ticker?: boolean }) {
       <footer style={{ background:'#1c1c1c', padding:'18px 6%', display:'flex',
         justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:16 }}>
         <span style={{ fontSize:12.5, color:'#666' }}>
-          © 2026 Shree Kalyanam.{' '}
+          © {new Date().getFullYear()} {companyName}.{' '}
           <span style={{ color:'#c9184a' }}>All rights reserved.</span>
         </span>
         <div style={{ display:'flex', alignItems:'center', gap:4, flexWrap:'wrap' }}>
