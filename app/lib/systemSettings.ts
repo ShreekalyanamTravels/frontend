@@ -15,11 +15,20 @@ export interface SystemSettingRow extends RowDataPacket {
  * cache) since these are ops toggles meant to take effect immediately, and they're only checked
  * at low-frequency action points (e.g. once per insurance purchase), not on any hot path. */
 export async function getSystemSetting(key: string): Promise<SystemSettingRow | null> {
-  const [rows] = await pool.query<SystemSettingRow[]>(
-    "SELECT id, `key`, value, status, description FROM system_settings WHERE `key` = ? LIMIT 1",
-    [key]
-  );
-  return rows[0] ?? null;
+  try {
+    const [rows] = await pool.query<SystemSettingRow[]>(
+      "SELECT id, `key`, value, status, description FROM system_settings WHERE `key` = ? LIMIT 1",
+      [key]
+    );
+    return rows[0] ?? null;
+  } catch (err) {
+    // Swallowed rather than thrown: callers like the marketing/corporate layouts call this
+    // during static-page prerendering at `next build` time, where the DB may not be reachable
+    // (build environment without DB network access/credentials) — a connection failure here
+    // must not fail the whole build. Callers fall back to a hardcoded default on null.
+    console.error(`getSystemSetting(${key}) failed:`, err);
+    return null;
+  }
 }
 
 /* Convenience wrapper over getSystemSetting() for the common on/off (status 0/1) check. */
