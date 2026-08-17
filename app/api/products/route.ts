@@ -11,7 +11,7 @@ interface ProductRow extends RowDataPacket {
 
 export async function GET() {
   const [rows] = await pool.query<ProductRow[]>(
-    "SELECT id, name, status, availability FROM products"
+    "SELECT id, name, status, availability FROM products ORDER BY (status = 'active') DESC"
   );
   return NextResponse.json({
     products: rows.map(r => ({ id: r.id, name: r.name, status: r.status, availability: r.availability })),

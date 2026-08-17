@@ -22,7 +22,9 @@ export async function GET(request: NextRequest) {
   const { status } = parsed.data;
 
   const [rows] = await pool.query<ProductRow[]>(
-    status ? "SELECT id, name, status, availability FROM products WHERE status = ?" : "SELECT id, name, status, availability FROM products",
+    status
+      ? "SELECT id, name, status, availability FROM products WHERE status = ?"
+      : "SELECT id, name, status, availability FROM products ORDER BY (status = 'active') DESC",
     status ? [status] : []
   );
 
