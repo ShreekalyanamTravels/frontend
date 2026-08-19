@@ -266,7 +266,6 @@ export default function Home() {
                   </div>
                 </div>
 
-                {/* reCAPTCHA — disabled until the site key supports this domain */}
                 {RECAPTCHA_ENABLED && (
                   <div style={{ marginBottom: 16, transform: 'scale(0.92)', transformOrigin: 'left' }}>
                     <ReCAPTCHA
