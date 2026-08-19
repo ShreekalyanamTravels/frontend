@@ -59,6 +59,7 @@ export const openApiSpec = {
     },
   },
   tags: [
+    { name: "Config" },
     { name: "Auth" },
     { name: "Profile" },
     { name: "Flights" },
@@ -70,6 +71,64 @@ export const openApiSpec = {
     { name: "Vendor" },
   ],
   paths: {
+    "/app-config": {
+      get: {
+        tags: ["Config"], summary: "Get basic app configuration", security: [],
+        description:
+          "Public, unauthenticated endpoint for basic app configuration — API base URL, branding, " +
+          "update gating, and feature flags — fetched on app launch before any user is logged in. " +
+          "Sourced from the system_settings table.",
+        responses: {
+          "200": {
+            description: "App configuration",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    apiBaseUrl: { type: "string", format: "uri" },
+                    branding: {
+                      type: "object",
+                      properties: {
+                        logoUrl: { type: "string", format: "uri" },
+                        loadingLogoUrl: { type: "string", format: "uri" },
+                        primaryColor: { type: "string", example: "#e07a3f" },
+                        backgroundColor: { type: "string", example: "#faf8f4" },
+                      },
+                    },
+                    minSupportedVersion: { type: "string", example: "1.0.0" },
+                    forceUpdate: { type: "boolean" },
+                    maintenanceMode: { type: "boolean" },
+                    featureFlags: {
+                      type: "object",
+                      properties: {
+                        otpLogin: { type: "boolean" },
+                        pushNotifications: { type: "boolean" },
+                        walletRecharge: { type: "boolean" },
+                      },
+                    },
+                  },
+                },
+                example: {
+                  apiBaseUrl: "https://corporate.shreekalyanam.com/api/v1",
+                  branding: {
+                    logoUrl: "https://corporate.shreekalyanam.com/assets/logo.png",
+                    loadingLogoUrl: "https://corporate.shreekalyanam.com/assets/logo-mark.png",
+                    primaryColor: "#e07a3f",
+                    backgroundColor: "#faf8f4",
+                  },
+                  minSupportedVersion: "1.0.0",
+                  forceUpdate: false,
+                  maintenanceMode: false,
+                  featureFlags: { otpLogin: true, pushNotifications: true, walletRecharge: true },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+
     "/auth/login": {
       post: {
         tags: ["Auth"], summary: "Log in", security: [],

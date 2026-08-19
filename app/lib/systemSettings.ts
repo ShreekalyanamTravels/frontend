@@ -44,3 +44,20 @@ export async function getSystemSettingValue(key: string): Promise<string | null>
   const row = await getSystemSetting(key);
   return row?.value ?? null;
 }
+
+/* Batch form of getSystemSetting() — one query for several keys instead of one round trip per
+ * key, for callers (like the app-config endpoint) that need a whole group of settings at once.
+ * Missing keys are simply absent from the returned map; same swallow-and-log-null behavior as
+ * getSystemSetting() on query failure. */
+export async function getSystemSettings(keys: string[]): Promise<Map<string, SystemSettingRow>> {
+  try {
+    const [rows] = await pool.query<SystemSettingRow[]>(
+      "SELECT id, `key`, value, status, description FROM system_settings WHERE `key` IN (?)",
+      [keys]
+    );
+    return new Map(rows.map((row) => [row.key, row]));
+  } catch (err) {
+    console.error(`getSystemSettings(${keys.join(", ")}) failed:`, err);
+    return new Map();
+  }
+}
