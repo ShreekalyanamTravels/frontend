@@ -1,8 +1,14 @@
 import { NextResponse } from "next/server";
 import { getSystemSettings } from "@/app/lib/systemSettings";
 
+// Always read system_settings fresh — maintenanceMode/forceUpdate/feature flags are ops toggles
+// meant to take effect immediately, so this must never be statically prerendered or CDN-cached.
+export const dynamic = "force-dynamic";
+
 const DEFAULTS = {
   apiBaseUrl: "https://corporate.shreekalyanam.com/api/v1",
+  appName: "Shree Kalyanam",
+  appIconUrl: "https://corporate.shreekalyanam.com/assets/logo-mark.png",
   branding: {
     logoUrl: "https://corporate.shreekalyanam.com/assets/logo.png",
     loadingLogoUrl: "https://corporate.shreekalyanam.com/assets/logo-mark.png",
@@ -21,6 +27,8 @@ const DEFAULTS = {
 
 const KEYS = [
   "api_base_url",
+  "app_name",
+  "app_icon_url",
   "branding_logo_url",
   "branding_loading_logo_url",
   "branding_primary_color",
@@ -45,21 +53,26 @@ export async function GET() {
     return row ? row.status === 1 : fallback;
   };
 
-  return NextResponse.json({
-    apiBaseUrl: value("api_base_url", DEFAULTS.apiBaseUrl),
-    branding: {
-      logoUrl: value("branding_logo_url", DEFAULTS.branding.logoUrl),
-      loadingLogoUrl: value("branding_loading_logo_url", DEFAULTS.branding.loadingLogoUrl),
-      primaryColor: value("branding_primary_color", DEFAULTS.branding.primaryColor),
-      backgroundColor: value("branding_background_color", DEFAULTS.branding.backgroundColor),
+  return NextResponse.json(
+    {
+      apiBaseUrl: value("api_base_url", DEFAULTS.apiBaseUrl),
+      appName: value("app_name", DEFAULTS.appName),
+      appIconUrl: value("app_icon_url", DEFAULTS.appIconUrl),
+      branding: {
+        logoUrl: value("branding_logo_url", DEFAULTS.branding.logoUrl),
+        loadingLogoUrl: value("branding_loading_logo_url", DEFAULTS.branding.loadingLogoUrl),
+        primaryColor: value("branding_primary_color", DEFAULTS.branding.primaryColor),
+        backgroundColor: value("branding_background_color", DEFAULTS.branding.backgroundColor),
+      },
+      minSupportedVersion: value("min_supported_version", DEFAULTS.minSupportedVersion),
+      forceUpdate: flag("force_update", DEFAULTS.forceUpdate),
+      maintenanceMode: flag("maintenance_mode", DEFAULTS.maintenanceMode),
+      featureFlags: {
+        otpLogin: flag("feature_otp_login", DEFAULTS.featureFlags.otpLogin),
+        pushNotifications: flag("feature_push_notifications", DEFAULTS.featureFlags.pushNotifications),
+        walletRecharge: flag("feature_wallet_recharge", DEFAULTS.featureFlags.walletRecharge),
+      },
     },
-    minSupportedVersion: value("min_supported_version", DEFAULTS.minSupportedVersion),
-    forceUpdate: flag("force_update", DEFAULTS.forceUpdate),
-    maintenanceMode: flag("maintenance_mode", DEFAULTS.maintenanceMode),
-    featureFlags: {
-      otpLogin: flag("feature_otp_login", DEFAULTS.featureFlags.otpLogin),
-      pushNotifications: flag("feature_push_notifications", DEFAULTS.featureFlags.pushNotifications),
-      walletRecharge: flag("feature_wallet_recharge", DEFAULTS.featureFlags.walletRecharge),
-    },
-  });
+    { headers: { "Cache-Control": "no-store" } }
+  );
 }

@@ -87,6 +87,8 @@ export const openApiSpec = {
                   type: "object",
                   properties: {
                     apiBaseUrl: { type: "string", format: "uri" },
+                    appName: { type: "string", example: "Shree Kalyanam" },
+                    appIconUrl: { type: "string", format: "uri" },
                     branding: {
                       type: "object",
                       properties: {
@@ -111,6 +113,8 @@ export const openApiSpec = {
                 },
                 example: {
                   apiBaseUrl: "https://corporate.shreekalyanam.com/api/v1",
+                  appName: "Shree Kalyanam",
+                  appIconUrl: "https://corporate.shreekalyanam.com/assets/logo-mark.png",
                   branding: {
                     logoUrl: "https://corporate.shreekalyanam.com/assets/logo.png",
                     loadingLogoUrl: "https://corporate.shreekalyanam.com/assets/logo-mark.png",
