@@ -29,7 +29,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       orderId: order.id,
-      keyId: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+      keyId: process.env.RAZORPAY_KEY_ID,
       amount,
       convenienceFee,
       gst,
