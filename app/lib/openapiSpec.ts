@@ -422,6 +422,45 @@ export const openApiSpec = {
       },
     },
 
+    "/payments/razorpay/config": {
+      get: {
+        tags: ["Payments"], summary: "Get Razorpay checkout settings",
+        description:
+          "Requires a logged-in session. Returns the public Razorpay checkout settings the " +
+          "mobile app needs to open the Razorpay SDK (keyId only). Never returns keySecret — " +
+          "that's a server-only credential (it authenticates server-to-server calls to " +
+          "Razorpay's API to create/refund orders and read transaction history) and must never " +
+          "be sent to a client; order creation and payment verification already happen " +
+          "server-side via /payments/razorpay/create-order and /payments/razorpay/verify.",
+        responses: {
+          "200": {
+            description: "Razorpay checkout settings",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    enabled: { type: "boolean" },
+                    keyId: { type: "string" },
+                    currency: { type: "string", example: "INR" },
+                    companyName: { type: "string", example: "Shree Kalyanam" },
+                    themeColor: { type: "string", example: "#f07820" },
+                  },
+                },
+                example: {
+                  enabled: true,
+                  keyId: "rzp_live_xxxxxxxxxxxxxx",
+                  currency: "INR",
+                  companyName: "Shree Kalyanam",
+                  themeColor: "#f07820",
+                },
+              },
+            },
+          },
+          "401": errorRef("Not authenticated"),
+        },
+      },
+    },
     "/payments/razorpay/create-order": {
       post: {
         tags: ["Payments"], summary: "Create a Razorpay order for a wallet top-up",
