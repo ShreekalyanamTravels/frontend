@@ -445,6 +445,7 @@ export const openApiSpec = {
                     currency: { type: "string", example: "INR" },
                     companyName: { type: "string", example: "Shree Kalyanam" },
                     themeColor: { type: "string", example: "#f07820" },
+                    logo: { type: "string", format: "uri" },
                   },
                 },
                 example: {
@@ -453,6 +454,7 @@ export const openApiSpec = {
                   currency: "INR",
                   companyName: "Shree Kalyanam",
                   themeColor: "#f07820",
+                  logo: "https://corporate.shreekalyanam.com/assets/logo.png",
                 },
               },
             },

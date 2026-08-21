@@ -11,12 +11,14 @@ const DEFAULTS = {
   currency: "INR",
   companyName: "Shree Kalyanam",
   themeColor: "#f07820",
+  logo: "https://corporate.shreekalyanam.com/assets/logo.png",
 };
 
 const KEYS = [
   "app_razorpay_enabled",
   "app_branding_primary_color",
   "app_name",
+  "app_branding_logo_url",
 ];
 
 // Requires a logged-in session (like the other /payments/razorpay/* routes). Returns key_id
@@ -39,6 +41,7 @@ export async function GET(request: Request) {
         currency: DEFAULTS.currency,
         companyName: settings.get("app_name")?.value ?? DEFAULTS.companyName,
         themeColor: settings.get("app_branding_primary_color")?.value ?? DEFAULTS.themeColor,
+        logo: settings.get("app_branding_logo_url")?.value ?? DEFAULTS.logo,
       },
       { headers: { "Cache-Control": "no-store" } }
     );
