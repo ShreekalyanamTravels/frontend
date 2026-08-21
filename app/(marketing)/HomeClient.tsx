@@ -322,6 +322,9 @@ export default function Home() {
 
                 {otpSent && (
                   <div style={{ marginBottom: 14 }}>
+                    <div style={{ fontSize: 12.5, color: '#1a7a3d', background: '#eaf9ef', border: '1px solid #bfe8cc', borderRadius: 8, padding: '9px 12px', marginBottom: 12 }}>
+                      A verification code has been sent to +91 {mobile}.
+                    </div>
                     <label style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.1em', textTransform: 'uppercase', color: '#7a7a7a', display: 'block', marginBottom: 7 }}>
                       ENTER OTP
                     </label>
