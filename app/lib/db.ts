@@ -15,6 +15,11 @@ const pool =
     database: process.env.DB_NAME,
     waitForConnections: true,
     connectionLimit: 10,
+    // Without this, mysql2 formats/parses DATETIME columns using whatever system timezone the
+    // calling process happens to be in ('local' is the default) — the same class of bug already
+    // fixed once for OTP expiry (db server clock was hours off). Pinning to UTC makes every JS
+    // Date <-> DATETIME round-trip environment-independent, matching Date.now()'s own UTC basis.
+    timezone: "Z",
   });
 
 if (process.env.NODE_ENV !== "production") {
