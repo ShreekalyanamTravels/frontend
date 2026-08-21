@@ -38,6 +38,10 @@ function normalizeStatus(status: string): string {
   if (s.includes("refund")) return "Refunded";
   if (s.includes("hold")) return "On Hold";
   if (s.includes("tick")) return "Ticketed";
+  // Yatra's own confirmed-ticket status is literally "SUCCESS" (see reviewBooking.ts) — some
+  // bookings get booking.status set to that verbatim rather than 'Tickted'. Matched by exact
+  // equality, not .includes(), so a value like "unsuccessful" doesn't false-positive here.
+  if (s === "success") return "Ticketed";
   return "Pending";
 }
 

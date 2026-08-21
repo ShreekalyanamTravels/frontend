@@ -52,6 +52,10 @@ function normalizeStatus(status: string): string {
   if (s.includes('refund')) return 'Refunded';
   if (s.includes('hold')) return 'On Hold';
   if (s.includes('tick')) return 'Ticketed';
+  // Yatra's own confirmed-ticket status is literally "SUCCESS" (see reviewBooking.ts) — some
+  // bookings get booking.status set to that verbatim rather than 'Tickted'. Matched by exact
+  // equality, not .includes(), so a value like "unsuccessful" doesn't false-positive here.
+  if (s === 'success') return 'Ticketed';
   return 'Pending';
 }
 
@@ -225,6 +229,29 @@ function ConfirmationContent() {
       .finally(() => setLoading(false));
   }, [user, ref]);
 
+  // Airline ticket confirmation happens asynchronously after payment (see automation_responce /
+  // reviewBooking.ts) — while the booking is still 'Pending', re-check every few seconds so the
+  // Ticket Status badge updates on its own once the ticket is issued, without a manual refresh.
+  // Self-terminates once the status moves off 'Pending' (or the tab is left/component unmounts).
+  useEffect(() => {
+    if (!user || !ref || !booking) return;
+    if (normalizeStatus(booking.status) !== 'Pending') return;
+
+    const timer = setTimeout(() => {
+      fetch(`/api/bookings/${encodeURIComponent(ref)}`)
+        .then(res => res.ok ? res.json() : null)
+        .then(data => {
+          if (!data) return;
+          setBooking(data.booking);
+          setSectors(data.sectors);
+          setPassengers(data.passengers);
+          setTickets(data.tickets ?? []);
+        });
+    }, 8000);
+
+    return () => clearTimeout(timer);
+  }, [user, ref, booking]);
+
   if (userLoading || loading) {
     return <div style={{ minHeight: '100vh', background: '#fdf6f2' }} />;
   }
@@ -257,6 +284,7 @@ function ConfirmationContent() {
 
   return (
     <div className={inter.className} style={{ background: '#fdf6f2', minHeight: '100vh', color: '#1a1a2e' }}>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
 
       {/* NAV */}
       <CorpHeader />
@@ -361,7 +389,9 @@ function ConfirmationContent() {
 
             {/* Ticket Status — driven by booking.status, which starts 'Pending' and only
              * becomes 'Tickted' once processReviewBookingResponse() confirms a real airline
-             * ticket (see app/lib/reviewBooking.ts). */}
+             * ticket (see app/lib/reviewBooking.ts). The badge/text below re-render straight off
+             * bStatus, so the background poll above flips this from Pending -> Ticketed on its
+             * own the moment the airline confirms — no separate "replace" logic needed. */}
             <div style={{ borderLeft: '1px solid #f0e8e8', paddingLeft: 24, flexShrink: 0 }}>
               <div style={{ fontSize: 10, color: '#bbb', textTransform: 'uppercase',
                 letterSpacing: '.08em', marginBottom: 8 }}>Ticket Status</div>
@@ -370,9 +400,16 @@ function ConfirmationContent() {
                 borderRadius: 20, padding: '5px 14px' }}>
                 <div style={{ width: 7, height: 7, borderRadius: '50%', background: statusClr.color }} />
                 <span style={{ fontSize: 12.5, fontWeight: 800, color: statusClr.color }}>{bStatus}</span>
+                {bStatus === 'Pending' && (
+                  <div style={{ width: 10, height: 10, borderRadius: '50%',
+                    border: `2px solid ${statusClr.color}33`, borderTopColor: statusClr.color,
+                    animation: 'spin .8s linear infinite' }} />
+                )}
               </div>
               <div style={{ fontSize: 11, color: '#aaa', marginTop: 8, maxWidth: 150, lineHeight: 1.4 }}>
-                Once your ticket is confirmed, the e-ticket will be sent to your registered email address.
+                {bStatus === 'Pending'
+                  ? 'Checking with the airline for confirmation…'
+                  : 'Once your ticket is confirmed, the e-ticket will be sent to your registered email address.'}
               </div>
             </div>
           </div>
