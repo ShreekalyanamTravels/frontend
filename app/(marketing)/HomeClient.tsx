@@ -7,6 +7,74 @@ import { Playfair_Display } from 'next/font/google';
 
 const playfair = Playfair_Display({ subsets: ['latin'], weight: ['400', '600', '700'] });
 
+/* Six separate single-digit boxes for OTP entry — typing a digit auto-advances to the next box,
+ * Backspace on an empty box steps back to the previous one, and pasting a full 6-digit code
+ * (e.g. from an SMS autofill prompt) fills every box at once. `value`/`onChange` still carry the
+ * OTP as one plain string, same as the single-input version this replaced. */
+function OtpBoxes({ value, onChange, onEnter }: { value: string; onChange: (v: string) => void; onEnter: () => void }) {
+  const refs = useRef<Array<HTMLInputElement | null>>([]);
+  const digits = Array.from({ length: 6 }, (_, i) => value[i] ?? '');
+
+  function setDigitAt(i: number, d: string) {
+    const next = digits.slice();
+    next[i] = d;
+    onChange(next.join(''));
+  }
+
+  function handleChange(i: number, raw: string) {
+    const d = raw.replace(/\D/g, '');
+    if (!d) { setDigitAt(i, ''); return; }
+    setDigitAt(i, d.slice(-1));
+    if (i < 5) refs.current[i + 1]?.focus();
+  }
+
+  function handleKeyDown(i: number, e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Backspace') {
+      if (digits[i]) {
+        setDigitAt(i, '');
+      } else if (i > 0) {
+        refs.current[i - 1]?.focus();
+        setDigitAt(i - 1, '');
+      }
+      e.preventDefault();
+    } else if (e.key === 'ArrowLeft' && i > 0) {
+      refs.current[i - 1]?.focus();
+    } else if (e.key === 'ArrowRight' && i < 5) {
+      refs.current[i + 1]?.focus();
+    } else if (e.key === 'Enter') {
+      onEnter();
+    }
+  }
+
+  function handlePaste(e: React.ClipboardEvent<HTMLInputElement>) {
+    e.preventDefault();
+    const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
+    if (!pasted) return;
+    onChange(pasted);
+    refs.current[Math.min(pasted.length, 6) - 1]?.focus();
+  }
+
+  return (
+    <div style={{ display: 'flex', gap: 8 }}>
+      {digits.map((d, i) => (
+        <input
+          key={i}
+          ref={el => { refs.current[i] = el; }}
+          type="text" inputMode="numeric" maxLength={1} value={d}
+          onChange={e => handleChange(i, e.target.value)}
+          onKeyDown={e => handleKeyDown(i, e)}
+          onPaste={handlePaste}
+          style={{
+            width: 42, height: 48, textAlign: 'center', fontSize: 19, fontWeight: 700,
+            border: '1.5px solid #e8e8e8', borderRadius: 8, background: '#fafafa',
+            fontFamily: 'inherit', color: '#1a1a2e', outline: 'none',
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
 const RECAPTCHA_ENABLED = process.env.NEXT_PUBLIC_RECAPTCHA_ENABLED === 'true';
 
 const BRANDS = [
@@ -328,12 +396,7 @@ export default function Home() {
                     <label style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.1em', textTransform: 'uppercase', color: '#7a7a7a', display: 'block', marginBottom: 7 }}>
                       ENTER OTP
                     </label>
-                    <input
-                      type="text" inputMode="numeric" value={otp} placeholder="6-digit OTP" maxLength={6}
-                      onChange={e => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                      onKeyDown={e => { if (e.key === 'Enter') handleVerifyOtp(); }}
-                      style={{ ...inputBase, background: '#fafafa', borderColor: '#e8e8e8' }}
-                    />
+                    <OtpBoxes value={otp} onChange={setOtp} onEnter={handleVerifyOtp} />
                   </div>
                 )}
 
