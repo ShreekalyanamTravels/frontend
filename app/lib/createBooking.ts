@@ -184,13 +184,6 @@ export function parseBookingRequest(body: unknown): BookingRequestInput | null {
   };
 }
 
-const PNR_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no 0/O/1/I — avoids visual ambiguity
-function generatePnr(): string {
-  let s = "";
-  for (let i = 0; i < 6; i++) s += PNR_CHARS[Math.floor(Math.random() * PNR_CHARS.length)];
-  return s;
-}
-
 const TYPE_CODE: Record<BookingPassengerInput["type"], string> = {
   Adult: "ADT",
   Child: "CHD",
@@ -213,16 +206,19 @@ const ISSUING_COUNTRY_CODE: Record<string, string> = {
 };
 
 /* Inserts a full booking (booking / booking_root / booking_travellers / booking_tickets) right
- * after payment clears. Both booking.status and booking_tickets.booking_status start 'SUCCESS'
+ * after payment clears. booking.status and booking_tickets.booking_status both start 'Pending'
  * — meaning "payment succeeded, ticket not yet confirmed" — and only become 'Tickted' once
- * processReviewBookingResponse() (app/lib/reviewBooking.ts) confirms a real ticket was issued via
- * the automation flow. This app has no live airline booking-API integration yet, so today that
- * means both stay 'SUCCESS' until that's wired up.
+ * processReviewBookingResponse() (app/lib/reviewBooking.ts) confirms a real ticket was issued.
+ * No PNR is generated here: the PNR is the airline's own confirmation code, assigned by Yatra —
+ * every PNR field (booking.pnr_number, booking_root.pnr_no, booking_tickets.pnr_no/ticket_no)
+ * starts null/blank and is meant to be filled in later by a separate cron that polls Yatra for
+ * the real ticketing result and writes it back (booking_tickets.pnr_no/ticket_no are NOT NULL
+ * columns, so those two use '' rather than null until that cron exists).
  * Caller must run this inside a transaction on `conn` and commit/rollback around it. */
 export async function createBookingRecord(
   conn: PoolConnection,
   p: CreateBookingParams
-): Promise<{ bookingId: string; pnr: string }> {
+): Promise<{ bookingId: string }> {
   const [lastRows] = await conn.query<RowDataPacket[]>(
     "SELECT sequence_number FROM booking ORDER BY id DESC LIMIT 1 FOR UPDATE"
   );
@@ -230,7 +226,6 @@ export async function createBookingRecord(
   const seq = (Number.isFinite(lastSeq) ? lastSeq : 9999) + 1;
   const bookingId = `SKRT${seq}`;
   const invoiceNo = `INVOICE${seq}`;
-  const pnr = generatePnr();
 
   const gstPincode = p.gst?.pincode ? Number(p.gst.pincode) || null : null;
 
@@ -263,11 +258,11 @@ export async function createBookingRecord(
        payment_status, pnr_number, flight_fare_type, booking_from, status, flight_no, flight_id,
        flightsDataArray, company_name, gst_reg_no, gst_number, pincode, state, address)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'normal', ?, ?, ?, ?, ?, ?, ?, NOW(), ?,
-       'Success', ?, ?, 'Manual', 'SUCCESS', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       'Success', ?, ?, 'Manual', 'Pending', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       bookingId, String(seq), invoiceNo, p.corporateId, p.countryCode, p.mobile, p.email,
       p.adt, p.chd, p.inf, p.travelClass, p.tripLabel, String(p.totalPayableAmt), p.totalFlightAmt,
-      p.paymentModeId, p.convenienceFee, p.serviceFee, p.serviceFee, p.transactionId, pnr,
+      p.paymentModeId, p.convenienceFee, p.serviceFee, p.serviceFee, p.transactionId, null,
       flightFareType, flightNo, flightId,
       flightsDataArray,
       p.gst?.companyName || null, p.gst?.registrationNo || null, p.gst?.gstNumber || null,
@@ -293,7 +288,7 @@ export async function createBookingRecord(
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [bookingId, bookingroot, sector.originCode, sector.destinationCode,
        sector.originCountry, sector.destinationCountry,
-       sector.originCity, sector.destinationCity, sector.flightDepartDateRaw, pnr]
+       sector.originCity, sector.destinationCity, sector.flightDepartDateRaw, null]
     );
   }
 
@@ -314,19 +309,18 @@ export async function createBookingRecord(
     travellerIds.push(result.insertId);
   }
 
-  let ticketSeq = 1;
   for (const sector of p.sectors) {
     const bookingroot = `${sector.originCode}-${sector.destinationCode}`;
     for (const travellerId of travellerIds) {
-      const ticketNo = `${pnr}${ticketSeq}`;
+      // pnr_no/ticket_no are NOT NULL columns — '' rather than null, to be filled in once the
+      // (future) cron writes back Yatra's real PNR/ticket number.
       await conn.query(
         `INSERT INTO booking_tickets (booking_id, booking_traveller_id, booking_root, pnr_no, ticket_no, booking_status)
-         VALUES (?, ?, ?, ?, ?, 'SUCCESS')`,
-        [bookingId, String(travellerId), bookingroot, pnr, ticketNo]
+         VALUES (?, ?, ?, '', '', 'Pending')`,
+        [bookingId, String(travellerId), bookingroot]
       );
-      ticketSeq++;
     }
   }
 
-  return { bookingId, pnr };
+  return { bookingId };
 }

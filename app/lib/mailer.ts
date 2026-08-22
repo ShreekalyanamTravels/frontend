@@ -12,7 +12,7 @@ const transporter = nodemailer.createTransport({
 
 export interface BookingConfirmationDetails {
   bookingRef: string;
-  pnr: string;
+  pnr: string | null;
   sectors: { route: string; date: string }[];
   passengers: { name: string; type: string }[];
   totalPayableAmt: number;
@@ -108,7 +108,7 @@ export function buildBookingConfirmationHtml(details: BookingConfirmationDetails
                     <div style="font-family:Arial,sans-serif;font-size:10px;font-weight:700;color:#bbb;
                       letter-spacing:.08em;text-transform:uppercase">PNR</div>
                     <div style="font-family:Arial,sans-serif;font-size:16px;font-weight:800;color:${NAVY};margin-top:3px">
-                      ${escapeHtml(details.pnr)}
+                      ${details.pnr ? escapeHtml(details.pnr) : 'To be confirmed'}
                     </div>
                   </td>
                 </tr>

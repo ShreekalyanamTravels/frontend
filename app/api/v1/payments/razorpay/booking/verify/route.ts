@@ -69,7 +69,7 @@ export async function POST(request: Request) {
     try {
       await conn.beginTransaction();
 
-      const { bookingId, pnr } = await createBookingRecord(conn, {
+      const { bookingId } = await createBookingRecord(conn, {
         ...input,
         corporateId: String(session.userId),
         paymentModeId: MODE_ID[mode ?? ""] ?? "3",
@@ -81,7 +81,7 @@ export async function POST(request: Request) {
       await reviewBookingIfEnabled(bookingId);
       await sendBookingConfirmation({
         email: input.email,
-        bookingId, pnr,
+        bookingId, pnr: null,
         corporateId: String(session.userId),
         billToName: session.name,
         sectors: input.sectors,

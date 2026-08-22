@@ -23,7 +23,7 @@ export async function POST(request: Request) {
       await conn.beginTransaction();
 
       const stamp = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14);
-      const { bookingId, pnr } = await createBookingRecord(conn, {
+      const { bookingId } = await createBookingRecord(conn, {
         ...input,
         corporateId: String(session.userId),
         paymentModeId: "5", // Creditpool
@@ -48,7 +48,7 @@ export async function POST(request: Request) {
       await reviewBookingIfEnabled(bookingId);
       await sendBookingConfirmation({
         email: input.email,
-        bookingId, pnr,
+        bookingId, pnr: null,
         corporateId: String(session.userId),
         billToName: session.name,
         sectors: input.sectors,

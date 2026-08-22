@@ -514,7 +514,7 @@ function ConfirmationContent() {
                   p.passport && { label: 'Passport No.', value: p.passport },
                   p.issuingCountry && { label: 'Issuing Country', value: p.issuingCountryCode ? `${p.issuingCountry} (${p.issuingCountryCode})` : p.issuingCountry },
                   p.passportExpiry && { label: 'Passport Expiry', value: fmtDate(p.passportExpiry) },
-                  ...paxTickets.map(t => ({
+                  ...paxTickets.filter(t => t.ticketNo).map(t => ({
                     label: paxTickets.length > 1 ? `Ticket No. (${(t.sector ?? '').replace('-', ' → ')})` : 'Ticket No.',
                     value: t.ticketNo,
                   })),

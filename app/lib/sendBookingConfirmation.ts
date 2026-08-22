@@ -7,7 +7,7 @@ import { sendBookingConfirmationEmail } from "@/app/lib/mailer";
 export async function sendBookingConfirmation(params: {
   email: string;
   bookingId: string;
-  pnr: string;
+  pnr: string | null;
   corporateId: string;
   billToName: string;
   sectors: { originCity: string; destinationCity: string; flightDepartDateRaw: string }[];
