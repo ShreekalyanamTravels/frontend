@@ -8,6 +8,7 @@ import { supplierColor, coverageBreakdown, SUPPLIER_LABELS, type ProposerForm, t
 import CorpHeader from '../../components/CorpHeader';
 import { useCurrentUser } from '../../../hooks/useCurrentUser';
 import { useWalletBalance } from '../../../hooks/useWalletBalance';
+import { useRazorpayConfig } from '../../../hooks/useRazorpayConfig';
 
 declare global {
   interface Window {
@@ -51,6 +52,7 @@ function PaymentContent() {
   const router   = useRouter();
   const sp       = useSearchParams();
   const { user, loading: userLoading } = useCurrentUser();
+  const razorpayConfig = useRazorpayConfig();
 
   useEffect(() => {
     if (!userLoading && !user) router.push('/');
@@ -152,11 +154,12 @@ function PaymentContent() {
         key: order.keyId,
         amount: Math.round(order.amount * 100),
         currency: 'INR',
-        name: 'Shree Kalyanam',
+        name: razorpayConfig?.companyName || 'Shree Kalyanam',
         description: 'Travel Insurance Premium',
+        image: razorpayConfig?.logo,
         order_id: order.orderId,
         prefill: { name: user?.name, email: proposer?.email, contact: proposer?.mobile },
-        theme: { color: O },
+        theme: { color: razorpayConfig?.themeColor || O },
         config: {
           display: {
             blocks: { highlighted: CHECKOUT_BLOCK[selectedMode] },

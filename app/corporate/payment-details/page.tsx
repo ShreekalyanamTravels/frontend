@@ -12,6 +12,7 @@ import { useConvenienceFee } from '../../hooks/useConvenienceFee';
 import { useFlightPriceCheck, type PriceCheckLeg } from '../../hooks/useFlightPriceCheck';
 import { PriceChangeNotice } from '../components/PriceChangeNotice';
 import { useWalletBalance } from '../../hooks/useWalletBalance';
+import { useRazorpayConfig } from '../../hooks/useRazorpayConfig';
 
 declare global {
   interface Window {
@@ -497,6 +498,7 @@ function PaymentContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user, loading: userLoading } = useCurrentUser();
+  const razorpayConfig = useRazorpayConfig();
 
   useEffect(() => {
     if (!userLoading && !user) router.push('/');
@@ -690,11 +692,12 @@ function PaymentContent() {
         key: order.keyId,
         amount: Math.round(order.amount * 100),
         currency: 'INR',
-        name: 'Shree Kalyanam',
+        name: razorpayConfig?.companyName || 'Shree Kalyanam',
         description: 'Flight Booking Payment',
+        image: razorpayConfig?.logo,
         order_id: order.orderId,
         prefill: { name: user?.name, email: activeContact.email, contact: activeContact.mobile },
-        theme: { color: O },
+        theme: { color: razorpayConfig?.themeColor || O },
         config: {
           display: {
             blocks: { highlighted: CHECKOUT_BLOCK[selectedMode] },

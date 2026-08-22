@@ -17,7 +17,7 @@ const DEFAULTS = {
 const KEYS = [
   "app_razorpay_enabled",
   "app_branding_primary_color",
-  "app_name",
+  "company_name",
   "app_branding_logo_url",
 ];
 
@@ -39,7 +39,7 @@ export async function GET(request: Request) {
         enabled: enabledRow ? enabledRow.status === 1 : DEFAULTS.enabled,
         keyId: process.env.RAZORPAY_KEY_ID ?? "",
         currency: DEFAULTS.currency,
-        companyName: settings.get("app_name")?.value ?? DEFAULTS.companyName,
+        companyName: settings.get("company_name")?.value ?? DEFAULTS.companyName,
         themeColor: settings.get("app_branding_primary_color")?.value ?? DEFAULTS.themeColor,
         logo: settings.get("app_branding_logo_url")?.value ?? DEFAULTS.logo,
       },

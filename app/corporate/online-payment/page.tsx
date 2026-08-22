@@ -7,6 +7,7 @@ import DashNav from '../components/DashNav';
 import CorpFooter from '../components/CorpFooter';
 import { useCurrentUser } from '../../hooks/useCurrentUser';
 import { useConvenienceFee } from '../../hooks/useConvenienceFee';
+import { useRazorpayConfig } from '../../hooks/useRazorpayConfig';
 
 declare global {
   interface Window {
@@ -42,6 +43,7 @@ const CHECKOUT_BLOCK: Record<Method, { name: string; instruments: Array<{ method
 export default function OnlinePaymentPage() {
   const router = useRouter();
   const { user, loading: userLoading } = useCurrentUser();
+  const razorpayConfig = useRazorpayConfig();
   const [amount, setAmount] = useState('');
   const [method, setMethod] = useState<Method>('upi');
   const [payStatus, setPayStatus] = useState<'idle' | 'creating' | 'success'>('idle');
@@ -89,11 +91,12 @@ export default function OnlinePaymentPage() {
         key: order.keyId,
         amount: Math.round(order.total * 100),
         currency: 'INR',
-        name: 'Shree Kalyanam',
+        name: razorpayConfig?.companyName || 'Shree Kalyanam',
         description: 'Wallet Top-up',
+        image: razorpayConfig?.logo,
         order_id: order.orderId,
         prefill: { name: user?.name, email: user?.email },
-        theme: { color: O },
+        theme: { color: razorpayConfig?.themeColor || O },
         config: {
           display: {
             blocks: { highlighted: CHECKOUT_BLOCK[method] },
