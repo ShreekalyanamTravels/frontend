@@ -36,6 +36,13 @@ function isoToDdmmyyyy(s: string): string {
   const [y, m, d] = s.split('-');
   return y && m && d ? `${d}/${m}/${y}` : '';
 }
+function addDaysToDdmmyyyy(s: string, days: number): string {
+  const iso = ddmmyyyyToIso(s);
+  if (!iso) return '';
+  const d = new Date(iso);
+  d.setDate(d.getDate() + days);
+  return isoToDdmmyyyy(d.toISOString().slice(0, 10));
+}
 
 /* Encode a selected flight into `${prefix}_*` query params for the next step (passenger-details).
  * NOTE: price/fareId here are for display only — the booking/payment step must re-validate the
@@ -129,11 +136,30 @@ const playfair = Playfair_Display({ subsets:['latin'], weight:['700'], style:['i
 const O  = '#f07820';
 const O2 = '#e86d18';
 const PK = '#c9184a';
+const MAX_MULTI_LEGS = 4;
 
 /* ─── Types ─── */
 type StopFilter = 0 | 1 | 2;
 type TimeSlot   = '00-06' | '06-12' | '12-18' | '18-00';
 type SortKey    = 'depart' | 'arrive' | 'duration' | 'price';
+type MultiLeg   = { from: string; to: string; dep: string; fromCountry: string; toCountry: string };
+
+/* Small bordered field wrapper (uppercase label + red border/text on error) shared by the compact
+ * search bar's single-row fields and the multi-city per-leg rows below it. */
+function SearchFieldBox({ label, error, flex, children }: { label: string; error?: boolean; flex: number; children: React.ReactNode }) {
+  return (
+    <div style={{
+      flex, minWidth: 0,
+      background: '#fff', border: `1.5px solid ${error ? '#e53935' : '#e8ddd4'}`,
+      borderRadius: 9, padding: '7px 14px',
+      display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 2,
+    }}>
+      <div style={{ fontSize: 8.5, fontWeight: 800, color: error ? '#e53935' : O,
+        letterSpacing: '.12em', textTransform: 'uppercase' }}>{label}</div>
+      {children}
+    </div>
+  );
+}
 
 function getLayoverCity(f: { segments: { to: string }[]; stops: number }): string | null {
   if (f.stops === 0 || f.segments.length < 2) return null;
@@ -456,14 +482,21 @@ function parseInitialSearch(sp: { get(key: string): string | null; getAll(key: s
     return Number.isFinite(n) ? n : fallbackN;
   };
 
+  const depDate = departures[0] || fallback.depDate;
+  // No departures[1] means the incoming search wasn't a round trip (e.g. it was one-way) — default
+  // the return date to the day after depDate rather than a fixed calendar date unrelated to it,
+  // so switching trip type to Round Trip on this page doesn't silently pre-fill an already-past
+  // (relative to depDate) return date. See addDaysToDdmmyyyy.
+  const retDate = departures[1] || addDaysToDdmmyyyy(depDate, 1) || fallback.retDate;
+
   return {
     trip,
     from: fromCities[0] || fallback.from,
     to:   toCities[0]   || fallback.to,
     fromCountry: originCodes[0] || '',
     toCountry:   destCodes[0]   || '',
-    depDate: departures[0] || fallback.depDate,
-    retDate: departures[1] || fallback.retDate,
+    depDate,
+    retDate,
     adults:   parseCount(sp.get('adults'),   fallback.adults),
     children: parseCount(sp.get('childs'),   fallback.children),
     infants:  parseCount(sp.get('infants'),  fallback.infants),
@@ -484,6 +517,13 @@ function ResultsPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const initialSearch = useMemo(() => parseInitialSearch(searchParams), [searchParams]);
+  // Trip type of the *currently displayed results* (i.e. what was actually searched, straight
+  // from the URL) — deliberately separate from `trip` below, which is the search bar's live
+  // selection and changes the instant the TRIP TYPE dropdown is touched, before Search is ever
+  // clicked. Anything rendering the results (leg summary row, Book Now params, FlightCard's
+  // one-way-vs-select button) must key off this, not `trip`, or switching the dropdown alone
+  // would repaint the still-stale results as if a new search had already run.
+  const resultsTrip = initialSearch.trip;
   const [trip, setTrip] = useState<'one-way'|'round'|'multi'>(initialSearch.trip);
   const [from,        setFrom]        = useState(initialSearch.from);
   const [to,          setTo]          = useState(initialSearch.to);
@@ -492,6 +532,67 @@ function ResultsPageInner() {
   const [depDate,     setDepDate]     = useState(initialSearch.depDate);
   const [retDate,     setRetDate]     = useState(initialSearch.retDate);
   const [showSearchErrors, setShowSearchErrors] = useState(false);
+
+  // Editable multi-city legs for re-searching from this page's compact bar (mirrors the
+  // dashboard's multi-city search form). Seeded from the incoming URL when the page was already
+  // reached via a multi-city search; otherwise starts as a single leg copied from the
+  // one-way/round-trip fields above, same starting point the dashboard's own form uses.
+  const [multiLegs, setMultiLegs] = useState<MultiLeg[]>(() => {
+    if (initialSearch.trip === 'multi') {
+      const fromCities  = searchParams.getAll('from_city[]');
+      const toCities     = searchParams.getAll('to_city[]');
+      const departures   = searchParams.getAll('departure[]');
+      const originCodes = searchParams.getAll('origin_country[]');
+      const destCodes    = searchParams.getAll('destination_country[]');
+      if (fromCities.length > 0) {
+        return fromCities.slice(0, MAX_MULTI_LEGS).map((f, i) => ({
+          from: f, to: toCities[i] ?? '', dep: departures[i] ?? '',
+          fromCountry: originCodes[i] ?? '', toCountry: destCodes[i] ?? '',
+        }));
+      }
+    }
+    return [{ from: initialSearch.from, to: initialSearch.to, dep: initialSearch.depDate,
+      fromCountry: initialSearch.fromCountry, toCountry: initialSearch.toCountry }];
+  });
+
+  function updateMultiLegCity(i: number, which: 'from'|'to', v: string, countryCode?: string) {
+    const countryField = which === 'from' ? 'fromCountry' : 'toCountry';
+    setMultiLegs(p => p.map((l, idx) => idx === i ? { ...l, [which]: v, [countryField]: countryCode ?? '' } : l));
+  }
+  function updateMultiLegDep(i: number, v: string) {
+    setMultiLegs(p => p.map((l, idx) => idx === i ? { ...l, dep: v } : l));
+  }
+  function addMultiLeg() {
+    setMultiLegs(p => p.length >= MAX_MULTI_LEGS ? p : [...p, { from: '', to: '', dep: '', fromCountry: '', toCountry: '' }]);
+  }
+  function removeMultiLeg(i: number) {
+    setMultiLegs(p => p.filter((_, idx) => idx !== i));
+  }
+
+  // Switches trip type via the dropdown — carries the currently-entered route over into the
+  // shape the new trip type needs (single fields <-> multiLegs), and defaults RETURN to the day
+  // after DEPART instead of leaving behind a stale/earlier value when switching into Round Trip.
+  function selectTrip(val: 'one-way'|'round'|'multi') {
+    if (val === 'multi' && trip !== 'multi') {
+      setMultiLegs(p => {
+        const seeded = [...p];
+        seeded[0] = { from, to, dep: depDate, fromCountry, toCountry };
+        return seeded;
+      });
+    } else if (trip === 'multi' && val !== 'multi' && multiLegs[0]) {
+      const first = multiLegs[0];
+      setFrom(first.from); setTo(first.to); setDepDate(first.dep);
+      setFromCountry(first.fromCountry); setToCountry(first.toCountry);
+    }
+    if (val === 'round' && trip !== 'round') {
+      const depIso = ddmmyyyyToIso(depDate);
+      const retIso = ddmmyyyyToIso(retDate);
+      if (!retIso || (depIso && retIso <= depIso)) {
+        setRetDate(addDaysToDdmmyyyy(depDate, 1));
+      }
+    }
+    setTrip(val);
+  }
 
   const [sortBy,      setSortBy]      = useState<SortKey>('price');
   // ?direct=1 (from the dashboard's Direct Flights Only toggle) pre-selects the 0-stops filter
@@ -551,16 +652,25 @@ function ResultsPageInner() {
     return [...seen.values()];
   }, [activeFlights]);
 
-  /* Selected flight per leg (leg index -> Flight|null). Initialized to each leg's cheapest flight. */
+  /* Selected flight per leg (leg index -> Flight|null). Initialized to each leg's cheapest flight
+   * that still matches the active Stops filter (e.g. the dashboard's Direct Flights Only toggle,
+   * which pre-selects 0 stops here) — picking the cheapest flight overall, ignoring that filter,
+   * meant the leg-summary card / Total Fare could show a price for a flight that wasn't even in
+   * the filtered results list underneath it. Falls back to the leg's overall cheapest flight only
+   * if nothing on that leg matches the filter, so a leg is never left unselected. */
   const [selectedLegs, setSelectedLegs] = useState<Record<number, Flight | null>>({});
   useEffect(() => {
     const init: Record<number, Flight | null> = {};
     for (let i = 0; i < legs.length; i++) {
       const flights = legs[i]?.flights ?? [];
-      init[i] = ([...flights].sort((a, b) => a.price - b.price)[0] ?? null);
+      const eligible = filterStops.length
+        ? flights.filter(f => filterStops.includes(f.stops as StopFilter))
+        : flights;
+      const pool = eligible.length ? eligible : flights;
+      init[i] = ([...pool].sort((a, b) => a.price - b.price)[0] ?? null);
     }
     setSelectedLegs(init);
-  }, [legs]);
+  }, [legs, filterStops]);
 
 
   /* Trip type picker */
@@ -634,7 +744,37 @@ function ResultsPageInner() {
   }
 
   function handleSearch() {
-    const valid = Boolean(from.trim() && to.trim() && depDate.trim() && (trip !== 'round' || retDate.trim()));
+    if (trip === 'multi') {
+      const validLegs = multiLegs.every(l => l.from.trim() && l.to.trim() && l.dep.trim());
+      if (!validLegs) { setShowSearchErrors(true); return; }
+      setShowSearchErrors(false);
+
+      const params = new URLSearchParams();
+      params.set('type', 'M');
+      params.set('no_segments', String(multiLegs.length));
+      multiLegs.forEach(l => params.append('from_city[]', l.from));
+      multiLegs.forEach(l => params.append('origin_country[]', l.fromCountry));
+      multiLegs.forEach(l => params.append('to_city[]', l.to));
+      multiLegs.forEach(l => params.append('destination_country[]', l.toCountry));
+      multiLegs.forEach(l => params.append('departure[]', l.dep));
+
+      params.append('travelers[]', ` ${totalPax} Traveler(s),${cabinClass} `);
+      params.set('adults', ` ${adults} `);
+      params.set('childs', ` ${children} `);
+      params.set('infants', ` ${infants} `);
+      params.set('class', cabinClass);
+      params.set('fare_type', '1');
+
+      const last = multiLegs[multiLegs.length - 1];
+      router.push(`${getResultsBasePath(multiLegs[0].from, last.to)}?${params.toString()}`);
+      return;
+    }
+
+    // Round trip additionally requires the return date to be strictly after departure — an
+    // already-entered-but-stale return date (e.g. left over from switching trip types) must not
+    // silently pass validation just because the field is non-empty.
+    const retValid = trip !== 'round' || (retDate.trim() && ddmmyyyyToIso(retDate) > ddmmyyyyToIso(depDate));
+    const valid = Boolean(from.trim() && to.trim() && depDate.trim() && retValid);
     if (!valid) { setShowSearchErrors(true); return; }
     setShowSearchErrors(false);
 
@@ -748,7 +888,7 @@ function ResultsPageInner() {
                     {TRIP_TYPES.map(t => {
                       const active = trip === t.val;
                       return (
-                        <div key={t.val} onClick={() => { setTrip(t.val); setTripTypeOpen(false); }} style={{
+                        <div key={t.val} onClick={() => { selectTrip(t.val); setTripTypeOpen(false); }} style={{
                           display:'flex', alignItems:'center', gap:10, cursor:'pointer',
                           padding:'10px 12px', borderRadius:9,
                           background: active ? `${O}12` : 'transparent',
@@ -768,6 +908,7 @@ function ResultsPageInner() {
                 )}
               </div>
             ), flex:0.9 },
+            ...(trip !== 'multi' ? [
             { label:'FROM CITY', content:(
               <CityAutocomplete value={from}
                 onChange={(v, opt) => { setFrom(v); setFromCountry(opt?.countryCode ?? ''); }}
@@ -782,7 +923,15 @@ function ResultsPageInner() {
             ), flex:1.6, error: showSearchErrors && !to.trim() },
             { label:'DEPART', content:(
               <input className="focus-ring-off" type="date" value={ddmmyyyyToIso(depDate)} min={new Date().toISOString().slice(0,10)}
-                onChange={e => setDepDate(isoToDdmmyyyy(e.target.value))} style={{
+                onChange={e => {
+                  const next = isoToDdmmyyyy(e.target.value);
+                  setDepDate(next);
+                  // Keep an already-chosen return date from silently becoming invalid (before/on
+                  // the new departure date) when the user only edits DEPART afterwards.
+                  if (trip === 'round' && retDate && ddmmyyyyToIso(retDate) <= e.target.value) {
+                    setRetDate(addDaysToDdmmyyyy(next, 1));
+                  }
+                }} style={{
                 background:'transparent', border:'none', outline:'none',
                 color:'#1a1a2e', fontWeight:700, fontSize:13, fontFamily:'inherit', width:'100%' }} />
             ), flex:1.1, error: showSearchErrors && !depDate.trim() },
@@ -796,7 +945,8 @@ function ResultsPageInner() {
                   style={{ background:'none', border:'none', color:'#bbb',
                     cursor:'pointer', fontSize:14, lineHeight:1, padding:0, flexShrink:0 }}>✕</button>
               </div>
-            ), flex:1.1, error: showSearchErrors && !retDate.trim() }] : []),
+            ), flex:1.1, error: showSearchErrors && (!retDate.trim() || ddmmyyyyToIso(retDate) <= ddmmyyyyToIso(depDate)) }] : []),
+            ] : []),
             { label:'PASSENGERS & CLASS', content:(
               <div style={{ position:'relative' }}>
                 {/* Trigger */}
@@ -914,6 +1064,55 @@ function ResultsPageInner() {
           }}>SEARCH</button>
         </div>
 
+        {/* Multi-city leg editor — one row per leg, mirrors the dashboard's multi-city form */}
+        {trip === 'multi' && (
+          <div style={{ maxWidth:1240, margin:'8px auto 0', display:'flex', flexDirection:'column', gap:8 }}>
+            {multiLegs.map((leg, i) => (
+              <div key={i} style={{ display:'flex', alignItems:'center', gap:8 }}>
+                <SearchFieldBox label="FROM CITY" flex={1.6} error={showSearchErrors && !leg.from.trim()}>
+                  <CityAutocomplete value={leg.from}
+                    onChange={(v, opt) => updateMultiLegCity(i, 'from', v, opt?.countryCode)}
+                    inputStyle={{ color:'#1a1a2e', fontWeight:700, fontSize:13, fontFamily:'inherit' }}
+                    inputClassName="focus-ring-off" />
+                </SearchFieldBox>
+                <SearchFieldBox label="TO CITY" flex={1.6} error={showSearchErrors && !leg.to.trim()}>
+                  <CityAutocomplete value={leg.to}
+                    onChange={(v, opt) => updateMultiLegCity(i, 'to', v, opt?.countryCode)}
+                    inputStyle={{ color:'#1a1a2e', fontWeight:700, fontSize:13, fontFamily:'inherit' }}
+                    inputClassName="focus-ring-off" />
+                </SearchFieldBox>
+                <SearchFieldBox label="DEPARTURE" flex={1.1} error={showSearchErrors && !leg.dep.trim()}>
+                  <input className="focus-ring-off" type="date" value={ddmmyyyyToIso(leg.dep)}
+                    min={(i > 0 ? ddmmyyyyToIso(multiLegs[i - 1].dep) : '') || new Date().toISOString().slice(0,10)}
+                    onChange={e => updateMultiLegDep(i, isoToDdmmyyyy(e.target.value))} style={{
+                    background:'transparent', border:'none', outline:'none',
+                    color:'#1a1a2e', fontWeight:700, fontSize:13, fontFamily:'inherit', width:'100%' }} />
+                </SearchFieldBox>
+                {multiLegs.length > 1 && (
+                  <button onClick={() => removeMultiLeg(i)} style={{
+                    flexShrink:0, width:32, height:32, borderRadius:'50%',
+                    background:'#fee2e2', border:'none', color:'#c9184a',
+                    cursor:'pointer', fontSize:18, fontWeight:700, lineHeight:1,
+                    display:'flex', alignItems:'center', justifyContent:'center' }}>×</button>
+                )}
+              </div>
+            ))}
+            {multiLegs.length < MAX_MULTI_LEGS ? (
+              <button onClick={addMultiLeg} style={{
+                alignSelf:'flex-start',
+                display:'inline-flex', alignItems:'center', gap:7,
+                padding:'8px 18px', border:`1.5px solid ${O}`,
+                borderRadius:22, background:'#fff', color: O,
+                cursor:'pointer', fontSize:12.5, fontWeight:700, fontFamily:'inherit',
+              }}>+ Add City</button>
+            ) : (
+              <span style={{ fontSize:12, color:'#999' }}>
+                Maximum {MAX_MULTI_LEGS} cities per multi-city search.
+              </span>
+            )}
+          </div>
+        )}
+
         {/* Combo notice */}
         <div style={{ textAlign:'center', padding:'4px 0 6px',
           fontSize:11.5, fontWeight:700, color:`${O}99`, letterSpacing:'.02em' }}>
@@ -922,7 +1121,7 @@ function ResultsPageInner() {
       </div>
 
       {/* ── LEG SUMMARY ROW (Round-trip or Multi-city) ── */}
-      {(trip === 'round' || trip === 'multi') && legs.length > 0 && (
+      {(resultsTrip === 'round' || resultsTrip === 'multi') && legs.length > 0 && (
         <div style={{ background:'#fdf5ee', borderBottom:'1px solid #f0dece', padding:'18px 5%' }}>
           <div style={{ maxWidth:1240, margin:'0 auto', display:'flex', alignItems:'stretch', gap:16, flexWrap:'wrap' }}>
 
@@ -1021,7 +1220,7 @@ function ResultsPageInner() {
               <button
                 onClick={() => {
                   const params = new URLSearchParams({
-                    trip, adults: String(adults), childs: String(children), infants: String(infants),
+                    trip: resultsTrip, adults: String(adults), childs: String(children), infants: String(infants),
                     // Carries the exact query this results page sent to /api/flights/search, so
                     // downstream pages (passenger-details/review-booking/payment-details) can
                     // re-run the same search to check whether the fare has changed since selection.
@@ -1030,7 +1229,7 @@ function ResultsPageInner() {
                     // origSearch above, just base64-encoded into the $requestd_data shape.
                     encodeDataForApi: base64Encode(buildEncodeDataForApi(searchParams)),
                   });
-                  if (trip === 'round') {
+                  if (resultsTrip === 'round') {
                     // Round trip downstream (passenger-details/review-booking/payment-details)
                     // expects the 'out'/'ret' prefixes specifically — keep this contract intact.
                     const out = selectedLegs[0];
@@ -1274,13 +1473,13 @@ function ResultsPageInner() {
               <FlightCard
                 key={f.id}
                 flight={f}
-                trip={trip}
+                trip={resultsTrip}
                 legRoutes={legRoutes}
                 selected={selectedLegs[activeLeg]?.id === f.id}
                 onSelect={f => setSelectedLegs(prev => ({ ...prev, [activeLeg]: f }))}
                 onBook={(f) => {
                   const params = new URLSearchParams({
-                    trip, adults: String(adults), childs: String(children), infants: String(infants),
+                    trip: resultsTrip, adults: String(adults), childs: String(children), infants: String(infants),
                     origSearch: searchParams.toString(),
                     encodeDataForApi: base64Encode(buildEncodeDataForApi(searchParams)),
                   });

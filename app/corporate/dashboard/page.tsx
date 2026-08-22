@@ -528,7 +528,8 @@ export default function DashboardPage() {
       ? { ...l, from: l.to, to: l.from, fromCountry: l.toCountry, toCountry: l.fromCountry }
       : l));
   }
-  function addLeg() { setLegs(p => [...p, { from:'', to:'', dep:'', fromCountry:'', toCountry:'' }]); }
+  const MAX_MULTI_LEGS = 4;
+  function addLeg() { setLegs(p => p.length >= MAX_MULTI_LEGS ? p : [...p, { from:'', to:'', dep:'', fromCountry:'', toCountry:'' }]); }
   function removeLeg(i: number) { setLegs(p => p.filter((_, idx) => idx !== i)); }
   function updateLeg(i: number, f: 'dep', v: string) {
     setLegs(p => p.map((l, idx) => idx === i ? { ...l, [f]: v } : l));
@@ -901,14 +902,20 @@ export default function DashboardPage() {
                   </div>
                 ))}
                 <div style={{ marginTop:18 }}>
-                  <button onClick={addLeg} style={{
-                    display:'inline-flex', alignItems:'center', gap:7,
-                    padding:'9px 20px', border:`1.5px solid ${O}`,
-                    borderRadius:26, background:'#fff', color:O,
-                    cursor:'pointer', fontSize:13.5, fontWeight:600, fontFamily:'inherit',
-                  }}>
-                    + Add City
-                  </button>
+                  {legs.length < MAX_MULTI_LEGS ? (
+                    <button onClick={addLeg} style={{
+                      display:'inline-flex', alignItems:'center', gap:7,
+                      padding:'9px 20px', border:`1.5px solid ${O}`,
+                      borderRadius:26, background:'#fff', color:O,
+                      cursor:'pointer', fontSize:13.5, fontWeight:600, fontFamily:'inherit',
+                    }}>
+                      + Add City
+                    </button>
+                  ) : (
+                    <span style={{ fontSize:12.5, color:'#999' }}>
+                      Maximum {MAX_MULTI_LEGS} cities per multi-city search.
+                    </span>
+                  )}
                 </div>
               </div>
             ) : (
