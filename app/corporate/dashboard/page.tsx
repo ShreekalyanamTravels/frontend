@@ -416,6 +416,7 @@ export default function DashboardPage() {
   const [legs, setLegs] = useState([{ from:'', to:'', dep:'', fromCountry:'', toCountry:'' }]);
   const [showFlightErrors, setShowFlightErrors] = useState(false);
   const [travellers, setTravellers] = useState<TravellersValue>({ adults:1, kids:0, infants:0, cabin:'Economy' });
+  const [directOnly, setDirectOnly] = useState(false);
 
   function buildFlightQuery(): string {
     const params = new URLSearchParams();
@@ -458,6 +459,7 @@ export default function DashboardPage() {
     params.set('infants', ` ${travellers.infants} `);
     params.set('class', travellers.cabin);
     params.set('fare_type', '1');
+    if (directOnly) params.set('direct', '1');
 
     return params.toString();
   }
@@ -956,6 +958,26 @@ export default function DashboardPage() {
                     <div style={{ width:5, height:5, borderRadius:'50%', background:'#fff' }} />
                   </div>
                   Regular
+                </div>
+
+                {/* Direct flights only */}
+                <div onClick={() => setDirectOnly(p => !p)} style={{
+                  display:'flex', alignItems:'center', gap:8, cursor:'pointer', userSelect:'none',
+                }}>
+                  <span style={{ fontSize:13.5, fontWeight:600, color: directOnly ? O : '#888' }}>
+                    Direct Flights Only
+                  </span>
+                  <div style={{
+                    width:38, height:21, borderRadius:11, flexShrink:0, position:'relative',
+                    background: directOnly ? `linear-gradient(135deg,${O},${O2})` : '#ddd5cc',
+                    transition:'background .15s',
+                  }}>
+                    <div style={{
+                      position:'absolute', top:2, left: directOnly ? 19 : 2,
+                      width:17, height:17, borderRadius:'50%', background:'#fff',
+                      boxShadow:'0 1px 3px rgba(0,0,0,.25)', transition:'left .15s',
+                    }} />
+                  </div>
                 </div>
               </div>
 

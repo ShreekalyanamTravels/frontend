@@ -498,7 +498,7 @@ function ResultsPageInner() {
   const [filterTime,    setFilterTime]    = useState<TimeSlot[]>([]);
   const [filterAir,     setFilterAir]     = useState<string[]>([]);
   const [filterLayover, setFilterLayover] = useState<string[]>([]);
-  const [directOnly,    setDirectOnly]    = useState(false);
+  const [directOnly,    setDirectOnly]    = useState(() => searchParams.get('direct') === '1');
   const [priceMax,      setPriceMax]      = useState(0);
 
   /* ── Live flight search ── */

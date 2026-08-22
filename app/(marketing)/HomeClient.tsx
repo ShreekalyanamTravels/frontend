@@ -386,6 +386,9 @@ export default function Home() {
                     onChange={e => setMobile(e.target.value.replace(/\D/g, '').slice(0, 10))}
                     style={{ ...inputBase, background: '#f0f4fb', borderColor: '#d8e4f4', opacity: otpSent ? 0.6 : 1 }}
                   />
+                  <div style={{ fontSize: 11, color: '#999', marginTop: 5 }}>
+                    Enter mobile number without country code
+                  </div>
                 </div>
 
                 {otpSent && (
