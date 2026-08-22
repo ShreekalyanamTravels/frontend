@@ -63,6 +63,7 @@ function FloatField({ label, flex, value, onChange, placeholder, O, type='text',
       <div style={{ border:`1.5px solid ${error ? '#e53935' : '#cdd5f0'}`, borderRadius:10,
         padding:'12px 14px', background:'#fff' }}>
         <input
+          className="focus-ring-off"
           type={type} value={value} min={min}
           onChange={e => onChange(e.target.value)}
           placeholder={placeholder}

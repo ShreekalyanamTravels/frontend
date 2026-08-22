@@ -494,11 +494,12 @@ function ResultsPageInner() {
   const [showSearchErrors, setShowSearchErrors] = useState(false);
 
   const [sortBy,      setSortBy]      = useState<SortKey>('price');
-  const [filterStops,   setFilterStops]   = useState<StopFilter[]>([]);
+  // ?direct=1 (from the dashboard's Direct Flights Only toggle) pre-selects the 0-stops filter
+  // below rather than being its own separate filter — Stops already covers "direct".
+  const [filterStops,   setFilterStops]   = useState<StopFilter[]>(() => searchParams.get('direct') === '1' ? [0] : []);
   const [filterTime,    setFilterTime]    = useState<TimeSlot[]>([]);
   const [filterAir,     setFilterAir]     = useState<string[]>([]);
   const [filterLayover, setFilterLayover] = useState<string[]>([]);
-  const [directOnly,    setDirectOnly]    = useState(() => searchParams.get('direct') === '1');
   const [priceMax,      setPriceMax]      = useState(0);
 
   /* ── Live flight search ── */
@@ -665,7 +666,6 @@ function ResultsPageInner() {
   }
 
   const filtered = useMemo(() => activeFlights.filter(f => {
-    if (directOnly && f.stops !== 0) return false;
     if (filterStops.length && !filterStops.includes(f.stops as StopFilter)) return false;
     if (filterTime.length  && !filterTime.some(s => inTimeSlot(f.dep, s))) return false;
     if (filterAir.length   && !filterAir.includes(f.airCode)) return false;
@@ -675,7 +675,7 @@ function ResultsPageInner() {
     }
     if (f.price > priceMax) return false;
     return true;
-  }), [activeFlights, directOnly, filterStops, filterTime, filterAir, filterLayover, priceMax]);
+  }), [activeFlights, filterStops, filterTime, filterAir, filterLayover, priceMax]);
 
   const sorted = useMemo(() => [...filtered].sort((a, b) => {
     if (sortBy === 'price')    return a.price - b.price;
@@ -1101,35 +1101,10 @@ function ResultsPageInner() {
               {/* Header */}
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
                 <span style={{ fontSize:13, fontWeight:800, color:'#1a1a2e' }}>Filters</span>
-                <button onClick={() => { setFilterStops([]); setFilterTime([]); setFilterAir([]); setFilterLayover([]); setDirectOnly(false); setPriceMax(computedMaxPrice); }}
+                <button onClick={() => { setFilterStops([]); setFilterTime([]); setFilterAir([]); setFilterLayover([]); setPriceMax(computedMaxPrice); }}
                   style={{ background:'none', border:'none', fontSize:11, color: PK,
                     fontWeight:700, cursor:'pointer', fontFamily:'inherit',
                     display:'flex', alignItems:'center', gap:3 }}>✕ Clear filter</button>
-              </div>
-
-              {/* ── Direct Flights ── */}
-              <div style={{ borderTop:'1px solid #f5ede8', paddingTop:12, marginBottom:12 }}>
-                <div onClick={() => setDirectOnly(p => !p)}
-                  style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8,
-                    cursor:'pointer', userSelect:'none',
-                    padding:'5px 8px', borderRadius:7,
-                    background: directOnly ? `${O}08` : 'transparent',
-                  }}>
-                  <span style={{ fontSize:11.5, color: directOnly ? O : '#666', fontWeight: directOnly ? 700 : 500 }}>
-                    Direct Flights Only
-                  </span>
-                  <div style={{
-                    width:34, height:19, borderRadius:10, flexShrink:0, position:'relative',
-                    background: directOnly ? `linear-gradient(135deg,${O},${O2})` : '#ddd5cc',
-                    transition:'background .15s',
-                  }}>
-                    <div style={{
-                      position:'absolute', top:2, left: directOnly ? 17 : 2,
-                      width:15, height:15, borderRadius:'50%', background:'#fff',
-                      boxShadow:'0 1px 3px rgba(0,0,0,.25)', transition:'left .15s',
-                    }} />
-                  </div>
-                </div>
               </div>
 
               {/* ── Stops ── */}
